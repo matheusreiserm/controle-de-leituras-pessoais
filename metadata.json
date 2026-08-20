@@ -1,0 +1,6 @@
+{
+  "name": "Controle de Leituras Pessoais",
+  "description": "Aplicativo para acompanhamento de acervo pessoal de leituras, diário mensal, matriz de nacionalidades (volume vs diversidade) e painéis analíticos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "Book": {
+      "title": "Book",
+      "description": "User reading tracker entry including reading metadata and optional fichamento notes",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number",
+          "description": "Unique numeric ID of the book"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Title of the book"
+        },
+        "author": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Author of the book"
+        },
+        "year": {
+          "type": "number",
+          "description": "Publication year"
+        },
+        "pages": {
+          "type": "number",
+          "description": "Total page count"
+        },
+        "nationality": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Author nationality"
+        },
+        "continent": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Geographical continent"
+        },
+        "format": {
+          "type": "string",
+          "enum": ["Físico", "Kindle", "PDF", "Archive.org", "Audible", "Físico/Audible"],
+          "description": "Reading format"
+        },
+        "language": {
+          "type": "string",
+          "enum": ["Português", "Inglês", "Espanhol", "Outros", "Não informado"],
+          "description": "Language in which the book was read"
+        },
+        "rating": {
+          "type": "number",
+          "description": "Rating from 0 to 6 stars"
+        },
+        "month": {
+          "type": "string",
+          "description": "Month name when read"
+        },
+        "monthId": {
+          "type": "number",
+          "description": "Sequential month index"
+        },
+        "readingYear": {
+          "type": "number",
+          "description": "Year in which the book was read"
+        },
+        "yearBookId": {
+          "type": "number",
+          "description": "Sequential book number within the reading year"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["read", "reading", "wishlist"],
+          "description": "Reading status"
+        },
+        "coverUrl": {
+          "type": "string",
+          "description": "Optional cover image URL"
+        },
+        "genre": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Optional genre"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional personal notes"
+        }
+      },
+      "required": ["id", "title", "author", "pages", "nationality", "format", "language", "month", "readingYear"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/books/{bookId}": {
+      "schema": "Book",
+      "description": "User's personal reading collection, restricted to the owner with email matheusreiserm@gmail.com"
+    }
+  }
+}
