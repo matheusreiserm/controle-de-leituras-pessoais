@@ -1,8 +1,4 @@
-import { Book } from '../types';
-
-// Base canônica revisada manualmente, incluindo o idioma de leitura.
-// As capas são recursos locais em public/covers.
-export const INITIAL_BOOKS: Book[] = [
+[
   {
     "id": 1,
     "readingYear": 2023,
@@ -10470,5 +10466,4 @@ export const INITIAL_BOOKS: Book[] = [
     "dataSource": "controle_leituras_backup.json (somente agosto/2026)",
     "coverUrl": "/covers/0551.webp"
   }
-];
-
+]
