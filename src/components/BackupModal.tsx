@@ -208,10 +208,10 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             </div>
             <div>
               <h2 className="text-sm font-bold text-stone-100 tracking-wide font-mono uppercase">
-                BACKUP E RESTAURAÇÃO MANUAL
+                DADOS NO GOOGLE DRIVE
               </h2>
               <p className="text-[11px] text-stone-400">
-                Sincronização manual com validação rigorosa de integridade
+                Importe ou exporte o JSON completo do seu acervo
               </p>
             </div>
           </div>
@@ -230,9 +230,9 @@ export const BackupModal: React.FC<BackupModalProps> = ({
           <div className="p-3 bg-stone-950/60 border border-stone-800 rounded-xl flex items-start gap-2.5 text-xs text-stone-300">
             <ShieldCheck size={16} className="text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-semibold block text-stone-200">Segurança de Dados:</span>
+              <span className="font-semibold block text-stone-200">Seu acervo fica sob seu controle:</span>
               <span>
-                As ações de exportação e restauração são 100% manuais e pedem confirmação para proteger seu acervo contra substituições acidentais.
+                As alterações feitas no app são salvas neste navegador. Depois de registrar novas leituras, use “Exportar para o Drive” para atualizar sua cópia integral na nuvem.
               </span>
             </div>
           </div>

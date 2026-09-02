@@ -1,0 +1,28 @@
+{
+  "total": 551,
+  "por_ano": {
+    "2023": 69,
+    "2024": 183,
+    "2025": 207,
+    "2026": 92
+  },
+  "por_nota": {
+    "0": 2,
+    "1": 36,
+    "2": 69,
+    "3": 136,
+    "4": 163,
+    "5": 116,
+    "6": 29
+  },
+  "por_idioma": {
+    "Espanhol": 94,
+    "Inglês": 226,
+    "Português": 231
+  },
+  "fontes_das_notas": {
+    "Consolidado_Leituras_2023_2026_corrigido.xlsx": 542,
+    "controle_leituras_backup.json (somente agosto/2026)": 9
+  },
+  "notas_planilha_em_branco_supridas_pelo_backup": 1
+}

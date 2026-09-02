@@ -15,7 +15,6 @@ import {
   LogOut,
   User,
   CloudUpload,
-  Database,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -28,11 +27,9 @@ interface HeaderProps {
   onSelectAllYears: () => void;
   onAddBook: () => void;
   onOpenBackupModal?: () => void;
-  onOpenMigrationModal?: () => void;
   userEmail?: string | null;
   onLogout?: () => void;
   readingBooksCount?: number;
-  isFirestoreSyncing?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,7 +42,6 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectAllYears,
   onAddBook,
   onOpenBackupModal,
-  onOpenMigrationModal,
   userEmail,
   onLogout,
   readingBooksCount = 0,
@@ -235,22 +231,11 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Nova Leitura</span>
             </button>
 
-            {onOpenMigrationModal && (
-              <button
-                onClick={onOpenMigrationModal}
-                className="flex items-center gap-1.5 px-3 py-2 bg-stone-800 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-semibold shadow transition-all shrink-0 cursor-pointer"
-                title="Ferramenta de Migração e Validação do Firestore"
-              >
-                <Database size={15} className="text-amber-400" />
-                <span>Migração Nuvem</span>
-              </button>
-            )}
-
             {onOpenBackupModal && (
               <button
                 onClick={onOpenBackupModal}
                 className="p-2 bg-stone-800 hover:bg-stone-700 text-amber-400 border border-stone-700 rounded-lg shadow transition-all shrink-0 cursor-pointer flex items-center justify-center"
-                title="Backup e Restauração Manual (Google Drive & JSON)"
+                title="Importar ou exportar o acervo completo no Google Drive"
               >
                 <CloudUpload size={18} className="text-amber-400" />
               </button>
