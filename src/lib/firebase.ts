@@ -28,15 +28,14 @@ try {
 
 export const auth = authInstance;
 
-export const FIRESTORE_DATABASE_ID = 'ai-studio-controledeleitur-520bd858-2710-4e37-997f-1e910d1267f6';
+export const FIRESTORE_DATABASE_ID = '(default)';
 
-// Initialize Firestore on the dedicated named database with memoryLocalCache
+// Initialize Firestore on the default database with memoryLocalCache
 export const db = initializeFirestore(
   app,
   {
     localCache: memoryLocalCache(),
-  },
-  'ai-studio-controledeleitur-520bd858-2710-4e37-997f-1e910d1267f6'
+  }
 );
 
 export const googleProvider = new GoogleAuthProvider();
@@ -75,12 +74,12 @@ export const setAccessToken = (token: string | null) => {
 
 export const getAccessToken = (): string | null => {
   if (cachedAccessToken) return cachedAccessToken;
-  
+
   if (typeof window !== 'undefined') {
     try {
       const storedTime = localStorage.getItem(TOKEN_TIME_KEY);
       const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY) || sessionStorage.getItem(TOKEN_STORAGE_KEY);
-      
+
       if (storedToken && storedTime) {
         const age = Date.now() - parseInt(storedTime, 10);
         if (age < TOKEN_MAX_AGE_MS) {
@@ -126,4 +125,3 @@ export const logout = async () => {
     console.error('Error signing out:', error);
   }
 };
-
