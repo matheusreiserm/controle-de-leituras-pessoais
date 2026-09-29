@@ -1,11 +1,9 @@
 import { Book } from '../types';
 import { getAccessToken, setAccessToken, loginWithGoogle } from './firebase';
 
-const PARENT_FOLDER_NAME = 'Google AI Studio';
 const BACKUPS_FOLDER_NAME = 'Backups';
 const BACKUP_FILE_NAME = 'controle_leituras_backup.json';
 const BACKUP_FILE_PREFIX = 'controle_leituras_backup_';
-const LEGACY_FILE_NAME = 'controle_leituras_acervo.json';
 const BACKUP_RETENTION_COUNT = 4;
 const AUTO_BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -96,13 +94,12 @@ async function getOrCreateFolder(
 }
 
 /**
- * Ensures 'Google AI Studio' folder and 'Google AI Studio/Backups' subfolder exist.
+ * Ensures 'Backups' folder exists directly in Google Drive root.
  * Returns the folder ID for 'Backups'.
  */
-export async function ensureBackupsFolder(token: string): Promise<{ parentFolderId: string; backupsFolderId: string }> {
-  const parentFolderId = await getOrCreateFolder(token, PARENT_FOLDER_NAME);
-  const backupsFolderId = await getOrCreateFolder(token, BACKUPS_FOLDER_NAME, parentFolderId);
-  return { parentFolderId, backupsFolderId };
+export async function ensureBackupsFolder(token: string): Promise<{ backupsFolderId: string }> {
+  const backupsFolderId = await getOrCreateFolder(token, BACKUPS_FOLDER_NAME);
+  return { backupsFolderId };
 }
 
 async function listBackupVersions(token: string, folderId: string): Promise<DriveBackupFile[]> {
@@ -125,8 +122,7 @@ async function getBooksFingerprint(books: Book[]): Promise<string> {
 }
 
 /**
- * Export app state to 'Google AI Studio/Backups/controle_leituras_backup.json'.
- * Always replaces/overwrites the previous backup file if present.
+ * Export app state to 'Backups/controle_leituras_backup_[timestamp].json'.
  */
 export async function exportToGoogleDrive(
   books: Book[],
@@ -143,7 +139,6 @@ export async function exportToGoogleDrive(
           message: 'Autenticação com a conta Google necessária para acessar o Google Drive.',
         };
       }
-      // Non-interactive background sync: exit silently without error
       return {
         success: false,
         message: 'Sincronização em segundo plano aguardando autorização.',
@@ -200,7 +195,7 @@ export async function exportToGoogleDrive(
     });
 
     if (!createRes.ok) {
-      throw new Error(`Erro ao criar novo backup na pasta 'Google AI Studio/Backups' (${createRes.status}).`);
+      throw new Error(`Erro ao criar novo backup na pasta 'Backups' (${createRes.status}).`);
     }
 
     const createdFile = await createRes.json();
@@ -252,7 +247,7 @@ export async function exportToGoogleDrive(
 }
 
 /**
- * Import backup file from 'Google AI Studio/Backups/controle_leituras_backup.json'.
+ * Import backup file from 'Backups/controle_leituras_backup.json' or latest versioned backup.
  */
 export async function importFromGoogleDrive(
   interactive: boolean = true
@@ -267,12 +262,10 @@ export async function importFromGoogleDrive(
       };
     }
 
-    let parentFolderId: string;
     let backupsFolderId: string;
 
     try {
       const folderRes = await ensureBackupsFolder(token);
-      parentFolderId = folderRes.parentFolderId;
       backupsFolderId = folderRes.backupsFolderId;
     } catch (err: any) {
       if (err?.message === 'TOKEN_EXPIRED' && interactive) {
@@ -280,7 +273,6 @@ export async function importFromGoogleDrive(
         if (res?.accessToken) {
           token = res.accessToken;
           const folderRes = await ensureBackupsFolder(token);
-          parentFolderId = folderRes.parentFolderId;
           backupsFolderId = folderRes.backupsFolderId;
         } else {
           throw err;
@@ -290,10 +282,11 @@ export async function importFromGoogleDrive(
       }
     }
 
-    // Prefer the newest versioned backup; retain compatibility with the previous fixed-name file.
+    // 1. Prioriza a versão mais recente dos backups versionados
     const backupVersions = await listBackupVersions(token, backupsFolderId);
     let fileId: string | null = backupVersions[0]?.id || null;
 
+    // 2. Busca pelo nome fixo padrão caso não haja versionados
     const query = encodeURIComponent(`name='${BACKUP_FILE_NAME}' and '${backupsFolderId}' in parents and trashed=false`);
     let searchRes = fileId ? null : await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -312,7 +305,7 @@ export async function importFromGoogleDrive(
     const searchData = searchRes?.ok ? await searchRes.json() : { files: [] };
     if (!fileId) fileId = searchData.files && searchData.files.length > 0 ? searchData.files[0].id : null;
 
-    // 2. Fallback: Search in Google AI Studio/Backups for any json file
+    // 3. Fallback: Qualquer arquivo JSON existente dentro da pasta Backups
     if (!fileId) {
       const fallbackQuery = encodeURIComponent(`'${backupsFolderId}' in parents and mimeType='application/json' and trashed=false`);
       const fbRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${fallbackQuery}`, {
@@ -326,24 +319,10 @@ export async function importFromGoogleDrive(
       }
     }
 
-    // 3. Fallback: Search in parent 'Google AI Studio' folder for LEGACY_FILE_NAME
-    if (!fileId && parentFolderId) {
-      const legacyQuery = encodeURIComponent(`name='${LEGACY_FILE_NAME}' and '${parentFolderId}' in parents and trashed=false`);
-      const legRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${legacyQuery}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (legRes.ok) {
-        const legData = await legRes.json();
-        if (legData.files && legData.files.length > 0) {
-          fileId = legData.files[0].id;
-        }
-      }
-    }
-
     if (!fileId) {
       return {
         success: false,
-        message: "Nenhum arquivo de backup foi encontrado na pasta 'Google AI Studio/Backups' no seu Google Drive.",
+        message: "Nenhum arquivo de backup foi encontrado na pasta 'Backups' no seu Google Drive.",
       };
     }
 
