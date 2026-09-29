@@ -7,6 +7,7 @@ import {
   onSnapshot,
   writeBatch,
   getDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Book } from '../types';
@@ -99,6 +100,27 @@ export function sanitizeBookForFirestore(book: Book): Record<string, any> {
   return clean;
 }
 
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${stableSerialize(entryValue)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+}
+
+export function areBookCollectionsEquivalent(left: Book[], right: Book[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightById = new Map(right.map((book) => [book.id, book]));
+  return left.every((book) => {
+    const matchingBook = rightById.get(book.id);
+    return !!matchingBook && stableSerialize(sanitizeBookForFirestore(book)) ===
+      stableSerialize(sanitizeBookForFirestore(matchingBook));
+  });
+}
+
 /**
  * Real-time listener for user's books stored in Firestore.
  */
@@ -181,6 +203,78 @@ export async function deleteUserBook(userId: string, bookId: number): Promise<vo
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
+}
+
+export async function createUserBook(
+  userId: string,
+  buildBook: (id: number) => Book,
+  requestId: string
+): Promise<Book> {
+  const booksCol = collection(db, 'users', userId, 'books');
+  const counterRef = doc(db, 'users', userId, 'metadata', 'bookIdCounter');
+  let currentMaximum = 0;
+
+  try {
+    const counter = await getDoc(counterRef);
+    if (!counter.exists()) {
+      const existingBooks = await getDocs(booksCol);
+      existingBooks.forEach((bookDoc) => {
+        currentMaximum = Math.max(currentMaximum, Number(bookDoc.data().id) || 0);
+      });
+    }
+
+    return await runTransaction(db, async (transaction) => {
+      const counter = await transaction.get(counterRef);
+      const counterData = counter.data();
+      const requestIds = (counterData?.requestIds || {}) as Record<string, number>;
+      const previousId = requestIds[requestId];
+      if (previousId) {
+        const previousRef = doc(db, 'users', userId, 'books', String(previousId));
+        const previousBook = await transaction.get(previousRef);
+        if (previousBook.exists()) return previousBook.data() as Book;
+      }
+
+      const lastId = counter.exists() ? Number(counterData?.lastId) || 0 : currentMaximum;
+      const book = buildBook(lastId + 1);
+      transaction.set(counterRef, {
+        lastId: book.id,
+        requestIds: { ...requestIds, [requestId]: book.id },
+      }, { merge: true });
+      transaction.set(doc(db, 'users', userId, 'books', String(book.id)), sanitizeBookForFirestore(book));
+      return book;
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, getUserBooksPath(userId));
+  }
+}
+
+export async function replaceUserBooks(userId: string, books: Book[]): Promise<void> {
+  const booksCol = collection(db, 'users', userId, 'books');
+  const existingBooks = await getDocs(booksCol);
+  const nextIds = new Set(books.map((book) => String(book.id)));
+  const maxId = books.reduce((maximum, book) => Math.max(maximum, book.id), 0);
+
+  for (let index = 0; index < books.length; index += 400) {
+    const batch = writeBatch(db);
+    books.slice(index, index + 400).forEach((book) => {
+      batch.set(doc(db, 'users', userId, 'books', String(book.id)), sanitizeBookForFirestore(book));
+    });
+    await batch.commit();
+  }
+
+  const staleDocs = existingBooks.docs.filter((bookDoc) => !nextIds.has(bookDoc.id));
+  for (let index = 0; index < staleDocs.length; index += 400) {
+    const batch = writeBatch(db);
+    staleDocs.slice(index, index + 400).forEach((bookDoc) => batch.delete(bookDoc.ref));
+    await batch.commit();
+  }
+
+  const counterRef = doc(db, 'users', userId, 'metadata', 'bookIdCounter');
+  await runTransaction(db, async (transaction) => {
+    const counter = await transaction.get(counterRef);
+    const lastId = counter.exists() ? Number(counter.data().lastId) || 0 : 0;
+    transaction.set(counterRef, { lastId: Math.max(lastId, maxId) }, { merge: true });
+  });
 }
 
 export interface MigrationProgress {
@@ -270,6 +364,15 @@ export async function migrateBooksToFirestore(
   }
 
   progress.isComplete = true;
+  if (progress.errors === 0 && booksToMigrate.length > 0) {
+    const counterRef = doc(db, 'users', userId, 'metadata', 'bookIdCounter');
+    const maxId = booksToMigrate.reduce((maximum, book) => Math.max(maximum, book.id), 0);
+    await runTransaction(db, async (transaction) => {
+      const counter = await transaction.get(counterRef);
+      const lastId = counter.exists() ? Number(counter.data().lastId) || 0 : 0;
+      transaction.set(counterRef, { lastId: Math.max(lastId, maxId) }, { merge: true });
+    });
+  }
   if (onProgress) {
     onProgress({ ...progress });
   }
@@ -280,7 +383,7 @@ export async function migrateBooksToFirestore(
 /**
  * Calculates live Firestore statistics directly from database for the user.
  */
-export async function getFirestoreStats(userId: string): Promise<{
+export async function getFirestoreStats(userId: string, expectedBooks?: Book[]): Promise<{
   total: number;
   readTotal: number;
   readingTotal: number;
@@ -296,14 +399,20 @@ export async function getFirestoreStats(userId: string): Promise<{
     byYear[y] = (byYear[y] || 0) + 1;
   });
 
-  const isValidTarget =
-    books.length === 551 &&
-    readBooks.length === 549 &&
-    readingTotal === 2 &&
-    byYear[2023] === 69 &&
-    byYear[2024] === 183 &&
-    byYear[2025] === 207 &&
-    byYear[2026] === 90;
+  const actualBooksById = new Map(books.map((book) => [book.id, book]));
+  const isValidTarget = expectedBooks
+    ? books.length === expectedBooks.length && expectedBooks.every((expectedBook) => {
+      const actualBook = actualBooksById.get(expectedBook.id);
+      return !!actualBook && stableSerialize(sanitizeBookForFirestore(actualBook)) ===
+        stableSerialize(sanitizeBookForFirestore(expectedBook));
+    })
+    : books.length === 551 &&
+      readBooks.length === 549 &&
+      readingTotal === 2 &&
+      byYear[2023] === 69 &&
+      byYear[2024] === 183 &&
+      byYear[2025] === 207 &&
+      byYear[2026] === 90;
 
   return {
     total: books.length,

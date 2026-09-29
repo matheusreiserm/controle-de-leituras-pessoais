@@ -4,7 +4,17 @@ import { getAccessToken, setAccessToken, loginWithGoogle } from './firebase';
 const PARENT_FOLDER_NAME = 'Google AI Studio';
 const BACKUPS_FOLDER_NAME = 'Backups';
 const BACKUP_FILE_NAME = 'controle_leituras_backup.json';
+const BACKUP_FILE_PREFIX = 'controle_leituras_backup_';
 const LEGACY_FILE_NAME = 'controle_leituras_acervo.json';
+const BACKUP_RETENTION_COUNT = 4;
+const AUTO_BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface DriveBackupFile {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+  appProperties?: Record<string, string>;
+}
 
 /**
  * Ensures an OAuth access token is available.
@@ -95,13 +105,33 @@ export async function ensureBackupsFolder(token: string): Promise<{ parentFolder
   return { parentFolderId, backupsFolderId };
 }
 
+async function listBackupVersions(token: string, folderId: string): Promise<DriveBackupFile[]> {
+  const query = encodeURIComponent(
+    `'${folderId}' in parents and name contains '${BACKUP_FILE_PREFIX}' and trashed=false`
+  );
+  const response = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=modifiedTime%20desc&pageSize=100&fields=files(id,name,modifiedTime,appProperties)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!response.ok) throw new Error(`Erro ao listar versões de backup no Drive (${response.status})`);
+  const data = await response.json();
+  return (data.files || []) as DriveBackupFile[];
+}
+
+async function getBooksFingerprint(books: Book[]): Promise<string> {
+  const content = new TextEncoder().encode(JSON.stringify(books));
+  const digest = await crypto.subtle.digest('SHA-256', content);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 /**
  * Export app state to 'Google AI Studio/Backups/controle_leituras_backup.json'.
  * Always replaces/overwrites the previous backup file if present.
  */
 export async function exportToGoogleDrive(
   books: Book[],
-  interactive: boolean = true
+  interactive: boolean = true,
+  automatic: boolean = false
 ): Promise<{ success: boolean; message: string; fileId?: string }> {
   try {
     let token = await ensureToken(interactive);
@@ -139,56 +169,42 @@ export async function exportToGoogleDrive(
       }
     }
 
-    // Search for existing file in Backups folder
-    const query = encodeURIComponent(`name='${BACKUP_FILE_NAME}' and '${backupsFolderId}' in parents and trashed=false`);
-    let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const fingerprint = await getBooksFingerprint(books);
+    const backupVersions = await listBackupVersions(token, backupsFolderId);
+    const latestBackup = backupVersions[0];
+    if (latestBackup?.appProperties?.contentHash === fingerprint) {
+      return { success: true, message: 'Backup ignorado: o acervo não mudou desde a última versão.' };
+    }
+    if (
+      automatic &&
+      latestBackup?.modifiedTime &&
+      Date.now() - Date.parse(latestBackup.modifiedTime) < AUTO_BACKUP_INTERVAL_MS
+    ) {
+      return { success: true, message: 'Backup automático aguardando o intervalo semanal.' };
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `${BACKUP_FILE_PREFIX}${timestamp}.json`;
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: fileName,
+        parents: [backupsFolderId],
+        mimeType: 'application/json',
+        appProperties: { contentHash: fingerprint },
+      }),
     });
 
-    if (!searchRes.ok && searchRes.status === 401 && interactive) {
-      const res = await loginWithGoogle();
-      if (res?.accessToken) {
-        token = res.accessToken;
-        searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
+    if (!createRes.ok) {
+      throw new Error(`Erro ao criar novo backup na pasta 'Google AI Studio/Backups' (${createRes.status}).`);
     }
 
-    if (!searchRes.ok) {
-      if (searchRes.status === 401) {
-        setAccessToken(null);
-      }
-      throw new Error(`Erro ao buscar arquivo de backup no Drive (${searchRes.status})`);
-    }
-
-    const searchData = await searchRes.json();
-    let fileId: string;
-
-    if (searchData.files && searchData.files.length > 0) {
-      fileId = searchData.files[0].id;
-    } else {
-      // Create new backup file in Backups subfolder
-      const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: BACKUP_FILE_NAME,
-          parents: [backupsFolderId],
-          mimeType: 'application/json',
-        }),
-      });
-
-      if (!createRes.ok) {
-        throw new Error(`Erro ao criar novo arquivo de backup na pasta 'Google AI Studio/Backups'.`);
-      }
-
-      const fileData = await createRes.json();
-      fileId = fileData.id;
-    }
+    const createdFile = await createRes.json();
+    const fileId = createdFile.id;
 
     // Overwrite content
     const jsonContent = JSON.stringify(books, null, 2);
@@ -205,9 +221,23 @@ export async function exportToGoogleDrive(
       throw new Error(`Falha ao atualizar o arquivo no Drive (${updateRes.status})`);
     }
 
+    try {
+      const savedVersions = await listBackupVersions(token, backupsFolderId);
+      await Promise.all(
+        savedVersions.slice(BACKUP_RETENTION_COUNT).map((backup) =>
+          fetch(`https://www.googleapis.com/drive/v3/files/${backup.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
+      );
+    } catch (error) {
+      console.warn('Não foi possível aplicar a retenção de backups:', error);
+    }
+
     return {
       success: true,
-      message: `Backup exportado com sucesso no Google Drive na pasta 'Google AI Studio/Backups' (${books.length} leituras)!`,
+      message: `Backup versionado salvo no Drive (${books.length} leituras). As ${BACKUP_RETENTION_COUNT} versões mais recentes são mantidas.`,
       fileId,
     };
   } catch (error: any) {
@@ -260,13 +290,16 @@ export async function importFromGoogleDrive(
       }
     }
 
-    // 1. Search in Google AI Studio/Backups for BACKUP_FILE_NAME
-    let query = encodeURIComponent(`name='${BACKUP_FILE_NAME}' and '${backupsFolderId}' in parents and trashed=false`);
-    let searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
+    // Prefer the newest versioned backup; retain compatibility with the previous fixed-name file.
+    const backupVersions = await listBackupVersions(token, backupsFolderId);
+    let fileId: string | null = backupVersions[0]?.id || null;
+
+    const query = encodeURIComponent(`name='${BACKUP_FILE_NAME}' and '${backupsFolderId}' in parents and trashed=false`);
+    let searchRes = fileId ? null : await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (!searchRes.ok && searchRes.status === 401 && interactive) {
+    if (searchRes && !searchRes.ok && searchRes.status === 401 && interactive) {
       const res = await loginWithGoogle();
       if (res?.accessToken) {
         token = res.accessToken;
@@ -276,8 +309,8 @@ export async function importFromGoogleDrive(
       }
     }
 
-    let searchData = searchRes.ok ? await searchRes.json() : { files: [] };
-    let fileId: string | null = searchData.files && searchData.files.length > 0 ? searchData.files[0].id : null;
+    const searchData = searchRes?.ok ? await searchRes.json() : { files: [] };
+    if (!fileId) fileId = searchData.files && searchData.files.length > 0 ? searchData.files[0].id : null;
 
     // 2. Fallback: Search in Google AI Studio/Backups for any json file
     if (!fileId) {

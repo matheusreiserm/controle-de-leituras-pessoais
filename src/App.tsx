@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Book, TabType, FichamentoData, MonthName } from './types';
 import { INITIAL_BOOKS } from './data/initialBooks';
 import { mergeBooksWithCanonical } from './data/canonicalBooks';
@@ -14,12 +14,25 @@ import { BookModal } from './components/BookModal';
 import { CoverHighlightModal } from './components/CoverHighlightModal';
 import { FichamentoModal } from './components/FichamentoModal';
 import { BackupModal } from './components/BackupModal';
+import { MigrationModal } from './components/MigrationModal';
 import { LoginView } from './components/LoginView';
 import { auth, logout, ALLOWED_EMAIL } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { MONTHS_LIST } from './utils/helpers';
+import {
+  areBookCollectionsEquivalent,
+  createUserBook,
+  deleteUserBook,
+  fetchUserBooks,
+  formatFirestoreErrorMessage,
+  replaceUserBooks,
+  saveUserBook,
+  subscribeUserBooks,
+} from './lib/firestoreBooks';
+import { exportToGoogleDrive } from './lib/driveSync';
 
 const LOCAL_STORAGE_CACHE_KEY = 'controle_leituras_cache_v5';
+const LOCAL_STORAGE_MIGRATION_SOURCE_KEY = 'controle_leituras_cache_v5_migration_source';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -38,7 +51,8 @@ export default function App() {
   // Books state with local cache as instant fallback
   const [books, setBooks] = useState<Book[]>(() => {
     try {
-      const cached = localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
+      const cached = localStorage.getItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY)
+        || localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -50,6 +64,15 @@ export default function App() {
     }
     return INITIAL_BOOKS;
   });
+  const migrationSourceBooks = useRef(books);
+  const initialSnapshotHandled = useRef(false);
+  const [syncPhase, setSyncPhase] = useState<'connecting' | 'ready' | 'migration-required' | 'offline'>('connecting');
+  const [syncAttempt, setSyncAttempt] = useState(0);
+  const [isMigrationModalOpen, setIsMigrationModalOpen] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [saveMessage, setSaveMessage] = useState('');
+  const [retryWrite, setRetryWrite] = useState<(() => void) | null>(null);
+  const automaticBackupInProgress = useRef(false);
 
   // Auth State Listener
   useEffect(() => {
@@ -72,16 +95,91 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!currentUser || currentUser.email?.toLowerCase() !== ALLOWED_EMAIL.toLowerCase()) return;
+
+    initialSnapshotHandled.current = false;
+    setSyncPhase('connecting');
+    const unsubscribe = subscribeUserBooks(
+      currentUser.uid,
+      (cloudBooks) => {
+        if (!initialSnapshotHandled.current) {
+          initialSnapshotHandled.current = true;
+          if (cloudBooks.length === 0) {
+            try {
+              localStorage.setItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY, JSON.stringify(migrationSourceBooks.current));
+            } catch (error) {
+              console.warn('Não foi possível preservar uma cópia local para migração:', error);
+            }
+            setSyncPhase('migration-required');
+            setIsMigrationModalOpen(true);
+            return;
+          }
+
+          const hasLocalDifferences = !areBookCollectionsEquivalent(
+            migrationSourceBooks.current,
+            cloudBooks
+          );
+
+          if (hasLocalDifferences) {
+            try {
+              localStorage.setItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY, JSON.stringify(migrationSourceBooks.current));
+            } catch (error) {
+              console.warn('Não foi possível preservar uma cópia local para migração:', error);
+            }
+          }
+          setBooks(cloudBooks);
+          setSyncPhase('ready');
+          if (hasLocalDifferences) setIsMigrationModalOpen(true);
+          return;
+        }
+
+        setBooks(cloudBooks);
+        setSyncPhase('ready');
+      },
+      (error) => {
+        initialSnapshotHandled.current = true;
+        setSyncPhase('offline');
+        setSaveState('error');
+        setSaveMessage(formatFirestoreErrorMessage(error));
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser?.uid, currentUser?.email, syncAttempt]);
+
   // Keep local cache in sync whenever books state changes
   useEffect(() => {
-    if (books.length > 0) {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_CACHE_KEY, JSON.stringify(books));
-      } catch (e) {
-        console.warn('Erro ao gravar cache local:', e);
-      }
+    try {
+      localStorage.setItem(LOCAL_STORAGE_CACHE_KEY, JSON.stringify(books));
+    } catch (e) {
+      console.warn('Erro ao gravar cache local:', e);
     }
   }, [books]);
+
+  useEffect(() => {
+    if (syncPhase !== 'ready' || isMigrationModalOpen || books.length === 0) return;
+
+    const runAutomaticBackup = () => {
+      if (automaticBackupInProgress.current) return;
+      automaticBackupInProgress.current = true;
+      void exportToGoogleDrive(books, false, true).then((result) => {
+        if (!result.success && !result.message.includes('aguardando autorização')) {
+          console.warn('Backup automático do Drive não concluído:', result.message);
+        }
+      }).finally(() => {
+        automaticBackupInProgress.current = false;
+      });
+    };
+
+    const timeoutId = window.setTimeout(runAutomaticBackup, 3000);
+    const intervalId = window.setInterval(runAutomaticBackup, 24 * 60 * 60 * 1000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, [syncPhase, isMigrationModalOpen, books]);
 
   const CURRENT_YEAR = 2026;
 
@@ -130,63 +228,110 @@ export default function App() {
     return books.filter((b) => b.status === 'reading');
   }, [books]);
 
-  // Os dados ficam no navegador e podem ser exportados/restaurados pelo Google Drive.
-  const handleSaveBook = (bookData: Omit<Book, 'id' | 'monthId'> & { id?: number }) => {
+  const runWrite = async <T,>(
+    label: string,
+    operation: () => Promise<T>,
+    onSuccess: (result: T) => void,
+    retry?: () => Promise<string | null>
+  ): Promise<string | null> => {
+    if (syncPhase !== 'ready' || !currentUser) {
+      const message = syncPhase === 'migration-required'
+        ? 'Migre o acervo para o Firestore antes de alterá-lo.'
+        : 'O Firestore ainda não está conectado. Tente novamente quando a conexão voltar.';
+      setSaveState('error');
+      setSaveMessage(message);
+      return message;
+    }
+
+    setSaveState('saving');
+    setSaveMessage(`${label}: salvando na nuvem...`);
+    setRetryWrite(null);
+    try {
+      const result = await operation();
+      onSuccess(result);
+      setSaveState('idle');
+      setSaveMessage('Alterações salvas na nuvem.');
+      return null;
+    } catch (error) {
+      const message = formatFirestoreErrorMessage(error);
+      setSaveState('error');
+      setSaveMessage(`${label}: ${message}`);
+      if (retry) setRetryWrite(() => () => { void retry(); });
+      return message;
+    }
+  };
+
+  const persistBook = (book: Book, label = 'Livro'): Promise<string | null> =>
+    runWrite(
+      label,
+      () => saveUserBook(currentUser!.uid, book),
+      () => setBooks((prev) => (prev.some((item) => item.id === book.id)
+        ? prev.map((item) => item.id === book.id ? book : item)
+        : [...prev, book])),
+      () => persistBook(book, label)
+    );
+
+  const persistNewBook = (
+    buildBook: (id: number) => Book,
+    label: string,
+    requestId: string = crypto.randomUUID()
+  ): Promise<string | null> => runWrite(
+    label,
+    () => createUserBook(currentUser!.uid, buildBook, requestId),
+    (book) => setBooks((prev) => [...prev.filter((item) => item.id !== book.id), book]),
+    () => persistNewBook(buildBook, label, requestId)
+  );
+
+  const handleSaveBook = async (bookData: Omit<Book, 'id' | 'monthId'> & { id?: number }): Promise<string | null> => {
     if (bookData.id) {
       const updatedBook: Book = {
         ...books.find((b) => b.id === bookData.id),
         ...bookData,
       } as Book;
-
-      setBooks((prev) => prev.map((b) => (b.id === bookData.id ? updatedBook : b)));
-
+      return persistBook(updatedBook, 'Edição do livro');
     } else {
-      const nextId = books.length > 0 ? Math.max(...books.map((b) => b.id)) + 1 : 1;
       const yearToUse = bookData.readingYear || 2026;
       const sameMonthCount = books.filter(
         (b) => (b.readingYear || 2026) === yearToUse && b.month === bookData.month
       ).length;
 
-      const newBook: Book = {
+      return persistNewBook((id) => ({
         ...bookData,
         readingYear: yearToUse,
-        id: nextId,
+        id,
         monthId: sameMonthCount + 1,
         status: bookData.status || 'read',
-      };
-
-      setBooks((prev) => [...prev, newBook]);
-
+      }), 'Novo livro');
     }
   };
 
-  // Exclusão local; o backup do Drive só muda quando o usuário exporta.
+  const persistDeleteBook = (id: number): Promise<string | null> => runWrite(
+    'Exclusão do livro',
+    () => deleteUserBook(currentUser!.uid, id),
+    () => setBooks((prev) => prev.filter((book) => book.id !== id)),
+    () => persistDeleteBook(id)
+  );
+
   const handleDeleteBook = (id: number) => {
     if (window.confirm(`Tem certeza que deseja excluir a leitura #${id}?`)) {
-      setBooks((prev) => prev.filter((b) => b.id !== id));
+      void persistDeleteBook(id);
     }
   };
 
-  // Fichamentos também fazem parte do JSON integral do acervo.
-  const handleSaveFichamento = (bookId: number, fichamento: FichamentoData) => {
-    setBooks((prev) => {
-      const updated = prev.map((b) => (b.id === bookId ? { ...b, fichamento } : b));
-      return updated;
-    });
+  const handleSaveFichamento = (bookId: number, fichamento: FichamentoData): Promise<string | null> => {
+    const book = books.find((item) => item.id === bookId);
+    if (!book) return Promise.resolve('O livro não foi encontrado no acervo atual.');
+    return persistBook({ ...book, fichamento }, 'Fichamento');
   };
 
   // In-Progress Reading Handlers
   const handleAddReadingBook = (newBookData: Omit<Book, 'id' | 'monthId'>) => {
-    const nextId = books.length > 0 ? Math.max(...books.map((b) => b.id)) + 1 : 1;
-    const newBook: Book = {
+    return persistNewBook((id) => ({
       ...newBookData,
-      id: nextId,
+      id,
       status: 'reading',
       monthId: 1,
-    };
-
-    setBooks((prev) => [newBook, ...prev]);
-
+    }), 'Nova leitura em andamento');
   };
 
   const handleCompleteReading = (
@@ -195,37 +340,33 @@ export default function App() {
     month: MonthName,
     readingYear: number
   ) => {
-    setBooks((prev) => {
-      const target = prev.find((b) => b.id === bookId);
-      if (!target) return prev;
+    const target = books.find((book) => book.id === bookId);
+    if (!target) return;
 
-      const readInTargetYear = prev.filter(
+    const readInTargetYear = books.filter(
         (b) => (!b.status || b.status === 'read') && (b.readingYear || 2026) === readingYear
       );
-      const readInTargetMonth = readInTargetYear.filter((b) => b.month === month);
+    const readInTargetMonth = readInTargetYear.filter((b) => b.month === month);
 
-      const completedBook: Book = {
-        ...target,
-        status: 'read' as const,
-        rating,
-        month,
-        readingYear,
-        yearBookId: readInTargetYear.length + 1,
-        monthId: readInTargetMonth.length + 1,
-      };
+    const completedBook: Book = {
+      ...target,
+      status: 'read',
+      rating,
+      month,
+      readingYear,
+      yearBookId: readInTargetYear.length + 1,
+      monthId: readInTargetMonth.length + 1,
+    };
 
-      return prev.map((b) => (b.id === bookId ? completedBook : b));
-    });
+    void persistBook(completedBook, 'Conclusão da leitura');
   };
 
   // Wishlist Handlers
   const handleAddWish = (title: string, author: string) => {
     const now = new Date();
     const currMonthName = MONTHS_LIST[now.getMonth()] || 'Agosto';
-    const nextId = books.length > 0 ? Math.max(...books.map((b) => b.id)) + 1 : 1;
-
-    const newWish: Book = {
-      id: nextId,
+    void persistNewBook((id) => ({
+      id,
       title,
       author,
       readingYear: 2026,
@@ -240,10 +381,7 @@ export default function App() {
       language: 'Português',
       rating: 5,
       status: 'wishlist',
-    };
-
-    setBooks((prev) => [newWish, ...prev]);
-
+    }), 'Novo item na lista de desejos');
   };
 
   const handleMarkAsRead = (wishBook: Book) => {
@@ -251,9 +389,14 @@ export default function App() {
     setIsModalOpen(true);
   };
 
-  // Restauração manual: a base canônica protege os 551 registros históricos.
-  const handleRestoreBooks = (importedBooks: Book[]) => {
-    setBooks(mergeBooksWithCanonical(importedBooks));
+  const handleRestoreBooks = async (importedBooks: Book[]): Promise<void> => {
+    const restoredBooks = mergeBooksWithCanonical(importedBooks);
+    const error = await runWrite(
+      'Restauração do backup',
+      () => replaceUserBooks(currentUser!.uid, restoredBooks),
+      () => setBooks(restoredBooks)
+    );
+    if (error) throw new Error(error);
   };
 
   const handleOpenAddModal = () => {
@@ -299,6 +442,49 @@ export default function App() {
         onLogout={logout}
         readingBooksCount={readingBooks.length}
       />
+
+      {(syncPhase === 'connecting' || syncPhase === 'offline' || syncPhase === 'migration-required' || saveState !== 'idle') && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+          <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 text-xs ${
+            saveState === 'error' || syncPhase === 'offline' || syncPhase === 'migration-required'
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+              : 'border-stone-300 bg-white text-stone-600 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300'
+          }`}>
+            <span>
+              {syncPhase === 'connecting' && 'Conectando ao Firestore...'}
+              {syncPhase === 'offline' && `Sem conexão com o Firestore. O cache local foi mantido. ${saveMessage}`}
+              {syncPhase === 'migration-required' && 'A nuvem ainda não tem o acervo. Migre os dados locais antes de fazer novas alterações.'}
+              {syncPhase === 'ready' && saveState !== 'idle' && saveMessage}
+            </span>
+            <div className="flex items-center gap-2">
+              {(syncPhase === 'offline' || syncPhase === 'connecting') && (
+                <button
+                  onClick={() => setSyncAttempt((attempt) => attempt + 1)}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Reconectar
+                </button>
+              )}
+              {syncPhase === 'migration-required' && (
+                <button
+                  onClick={() => setIsMigrationModalOpen(true)}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Migrar acervo
+                </button>
+              )}
+              {saveState === 'error' && retryWrite && (
+                <button
+                  onClick={() => retryWrite()}
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Tentar novamente
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main View Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -404,6 +590,34 @@ export default function App() {
         onClose={() => setIsBackupModalOpen(false)}
         books={books}
         onRestoreBooks={handleRestoreBooks}
+      />
+
+      <MigrationModal
+        isOpen={isMigrationModalOpen}
+        onClose={() => {
+          setIsMigrationModalOpen(false);
+          if (syncPhase === 'ready') {
+            migrationSourceBooks.current = books;
+            localStorage.removeItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY);
+          }
+        }}
+        userId={currentUser.uid}
+        userEmail={currentUser.email || ''}
+        books={migrationSourceBooks.current}
+        onMigrationSuccess={async () => {
+          setIsMigrationModalOpen(false);
+          try {
+            const syncedBooks = await fetchUserBooks(currentUser.uid);
+            setBooks(syncedBooks);
+            migrationSourceBooks.current = syncedBooks;
+            localStorage.removeItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY);
+            setSyncPhase('ready');
+          } catch (error) {
+            setSyncPhase('offline');
+            setSaveState('error');
+            setSaveMessage(formatFirestoreErrorMessage(error));
+          }
+        }}
       />
 
     </div>

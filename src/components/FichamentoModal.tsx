@@ -6,7 +6,7 @@ interface FichamentoModalProps {
   book: Book | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (bookId: number, fichamento: FichamentoData) => void;
+  onSave: (bookId: number, fichamento: FichamentoData) => Promise<string | null>;
 }
 
 export const FichamentoModal: React.FC<FichamentoModalProps> = ({
@@ -18,6 +18,8 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   const [reference, setReference] = useState('');
   const [items, setItems] = useState<FichamentoItem[]>([]);
   const [copied, setCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     if (book) {
@@ -60,13 +62,26 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
     );
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return;
     const validItems = items.filter((item) => item.page.trim() || item.text.trim());
-    onSave(book.id, {
-      reference: reference.trim(),
-      items: validItems,
-    });
-    onClose();
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      const error = await onSave(book.id, {
+        reference: reference.trim(),
+        items: validItems,
+      });
+      if (error) {
+        setSaveError(error);
+        return;
+      }
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar o fichamento.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCopyFormatted = () => {
@@ -123,6 +138,11 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+          {saveError && (
+            <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+              {saveError}
+            </div>
+          )}
           
           {/* Cabeçalho Simples - Referência Bibliográfica */}
           <div className="space-y-1.5">
@@ -245,9 +265,10 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="px-5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-lg text-xs shadow-md transition-all cursor-pointer"
+              disabled={isSaving}
+              className="px-5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-lg text-xs shadow-md transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
             >
-              Salvar Fichamento
+              {isSaving ? 'Salvando...' : 'Salvar Fichamento'}
             </button>
           </div>
         </div>

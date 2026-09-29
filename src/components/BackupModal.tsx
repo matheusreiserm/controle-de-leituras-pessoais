@@ -20,7 +20,7 @@ interface BackupModalProps {
   isOpen: boolean;
   onClose: () => void;
   books: Book[];
-  onRestoreBooks: (importedBooks: Book[]) => void;
+  onRestoreBooks: (importedBooks: Book[]) => Promise<void>;
 }
 
 export const BackupModal: React.FC<BackupModalProps> = ({
@@ -37,7 +37,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 
   const handleExportDrive = async () => {
     const confirmed = window.confirm(
-      `Deseja exportar o backup de ${books.length} leituras para o Google Drive? Isso atualizará o arquivo 'controle_leituras_backup.json' na pasta 'Google AI Studio/Backups'.`
+      `Deseja salvar uma versão do backup de ${books.length} leituras no Google Drive? As quatro versões mais recentes serão mantidas.`
     );
     if (!confirmed) return;
 
@@ -50,7 +50,9 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         setFeedback({
           type: 'success',
           text: result.message,
-          details: `Backup versionado (v${payload.formatVersion}) com ${books.length} registros exportados.`,
+          details: result.message.includes('não mudou')
+            ? 'Nenhuma cópia adicional foi criada.'
+            : `Formato v${payload.formatVersion}; ${books.length} registros no acervo.`,
         });
       } else {
         setFeedback({ type: 'error', text: result.message });
@@ -87,7 +89,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
           return;
         }
 
-        onRestoreBooks(validation.books);
+        await onRestoreBooks(validation.books);
         setFeedback({
           type: 'success',
           text: `Backup restaurado com sucesso do Google Drive! (${validation.totalRecords} leituras validadas)`,
@@ -148,7 +150,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
     setFeedback(null);
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const text = e.target?.result as string;
         const parsed = JSON.parse(text);
@@ -164,7 +166,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
           return;
         }
 
-        onRestoreBooks(validation.books);
+        await onRestoreBooks(validation.books);
         setFeedback({
           type: 'success',
           text: `Backup local restaurado com sucesso! (${validation.totalRecords} leituras validadas)`,
@@ -211,7 +213,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 DADOS NO GOOGLE DRIVE
               </h2>
               <p className="text-[11px] text-stone-400">
-                Importe ou exporte o JSON completo do seu acervo
+                Snapshots rotativos no Drive · até 4 versões
               </p>
             </div>
           </div>
@@ -232,7 +234,10 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             <div>
               <span className="font-semibold block text-stone-200">Seu acervo fica sob seu controle:</span>
               <span>
-                As alterações feitas no app são salvas neste navegador. Depois de registrar novas leituras, use “Exportar para o Drive” para atualizar sua cópia integral na nuvem.
+                O Firestore é a fonte principal; o Drive mantém cópias de segurança versionadas e a restauração valida os dados antes de aplicá-los.
+              </span>
+              <span className="block mt-1 text-[11px] text-stone-500">
+                O backup semanal automático depende do app aberto e da autorização ativa do Drive.
               </span>
             </div>
           </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { INITIAL_BOOKS } from '../data/initialBooks';
+import { Book } from '../types';
 import {
   migrateBooksToFirestore,
   getFirestoreStats,
@@ -28,7 +28,8 @@ interface MigrationModalProps {
   onClose: () => void;
   userId: string;
   userEmail: string;
-  onMigrationSuccess?: () => void;
+  books: Book[];
+  onMigrationSuccess?: () => void | Promise<void>;
 }
 
 export const MigrationModal: React.FC<MigrationModalProps> = ({
@@ -36,10 +37,11 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
   onClose,
   userId,
   userEmail,
+  books,
   onMigrationSuccess,
 }) => {
   const [isRunning, setIsRunning] = useState(false);
-  const [overwrite, setOverwrite] = useState(true);
+  const [overwrite, setOverwrite] = useState(false);
   const [progress, setProgress] = useState<MigrationProgress | null>(null);
   const [firestoreStats, setFirestoreStats] = useState<{
     total: number;
@@ -52,39 +54,31 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Local expected dataset totals validation
   const localStats = React.useMemo(() => {
     const byYear: Record<number, number> = {};
-    const readBooks = INITIAL_BOOKS.filter((b) => !b.status || b.status === 'read');
-    const readingTotal = INITIAL_BOOKS.filter((b) => b.status === 'reading').length;
+    const readBooks = books.filter((b) => !b.status || b.status === 'read');
+    const readingTotal = books.filter((b) => b.status === 'reading').length;
     readBooks.forEach((b) => {
       const y = b.readingYear || 0;
       byYear[y] = (byYear[y] || 0) + 1;
     });
-    const isValid =
-      INITIAL_BOOKS.length === 551 &&
-      readBooks.length === 549 &&
-      readingTotal === 2 &&
-      byYear[2023] === 69 &&
-      byYear[2024] === 183 &&
-      byYear[2025] === 207 &&
-      byYear[2026] === 90;
+    const uniqueIds = new Set(books.map((book) => book.id));
 
     return {
-      total: INITIAL_BOOKS.length,
+      total: books.length,
       readTotal: readBooks.length,
       readingTotal,
       byYear,
-      isValid,
+      hasUniqueIds: uniqueIds.size === books.length,
     };
-  }, []);
+  }, [books]);
 
   const loadLiveStats = async () => {
     if (!userId) return;
     setLoadingStats(true);
     setConnectionError(null);
     try {
-      const stats = await getFirestoreStats(userId);
+      const stats = await getFirestoreStats(userId, books);
       setFirestoreStats(stats);
     } catch (e: any) {
       const friendly = formatFirestoreErrorMessage(e);
@@ -106,7 +100,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
   const handleStartMigration = async () => {
     if (overwrite) {
       const confirmed = window.confirm(
-        'A base corrigida substituirá os campos bibliográficos dos registros existentes. Fichamentos, notas e outros campos adicionais serão preservados. Deseja continuar?'
+        'Os dados locais substituirão os mesmos campos dos registros existentes no Firestore. Campos ausentes no acervo local serão preservados. Deseja continuar?'
       );
       if (!confirmed) return;
     }
@@ -118,7 +112,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
     try {
       const result = await migrateBooksToFirestore(
         userId,
-        INITIAL_BOOKS,
+        books,
         overwrite,
         (p) => setProgress({ ...p })
       );
@@ -131,7 +125,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
           `Migração concluída! ${result.imported} registros gravados/atualizados e ${result.skipped} preservados.`
         );
         if (onMigrationSuccess) {
-          onMigrationSuccess();
+          await onMigrationSuccess();
         }
       } else {
         setStatusMessage(
@@ -236,7 +230,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold text-stone-200 uppercase tracking-wider">
                 <ShieldCheck size={16} className="text-amber-400" />
-                <span>Validação da Base Corrigida (549 concluídas + 2 em leitura)</span>
+                  <span>Comparação do acervo local com a nuvem</span>
               </div>
               <button
                 onClick={loadLiveStats}
@@ -252,7 +246,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
             <div className="grid grid-cols-5 gap-2 text-center text-xs">
               <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
                 <span className="text-[10px] text-stone-400 uppercase font-mono block">2023</span>
-                <span className="font-bold text-stone-200 text-sm">69</span>
+                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2023] || 0}</span>
                 <span className="text-[10px] text-emerald-400 block font-mono">
                   {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2023] || 0}` : '...'}
                 </span>
@@ -260,7 +254,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
 
               <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
                 <span className="text-[10px] text-stone-400 uppercase font-mono block">2024</span>
-                <span className="font-bold text-stone-200 text-sm">183</span>
+                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2024] || 0}</span>
                 <span className="text-[10px] text-emerald-400 block font-mono">
                   {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2024] || 0}` : '...'}
                 </span>
@@ -268,7 +262,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
 
               <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
                 <span className="text-[10px] text-stone-400 uppercase font-mono block">2025</span>
-                <span className="font-bold text-stone-200 text-sm">207</span>
+                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2025] || 0}</span>
                 <span className="text-[10px] text-emerald-400 block font-mono">
                   {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2025] || 0}` : '...'}
                 </span>
@@ -276,7 +270,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
 
               <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
                 <span className="text-[10px] text-stone-400 uppercase font-mono block">2026</span>
-                <span className="font-bold text-stone-200 text-sm">90</span>
+                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2026] || 0}</span>
                 <span className="text-[10px] text-emerald-400 block font-mono">
                   {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2026] || 0}` : '...'}
                 </span>
@@ -286,7 +280,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
                 <span className="text-[10px] text-amber-300 uppercase font-mono font-bold block">
                   Total
                 </span>
-                <span className="font-bold text-amber-400 text-sm">551</span>
+                <span className="font-bold text-amber-400 text-sm">{localStats.total}</span>
                 <span className="text-[10px] font-bold text-emerald-400 block font-mono">
                   {firestoreStats ? `Nuvem: ${firestoreStats.total}` : '...'}
                 </span>
@@ -298,14 +292,14 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
               <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-lg flex items-center gap-2 text-xs text-emerald-300 font-semibold">
                 <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
                 <span>
-                  Perfeito! Os 551 registros estão sincronizados: 549 leituras concluídas (69, 183, 207 e 90 por ano) e 2 leituras em andamento.
+                  Perfeito! Quantidade, IDs e campos dos {firestoreStats.total} registros conferem com o acervo local.
                 </span>
               </div>
             ) : (
               <div className="p-2.5 bg-stone-900/60 border border-stone-800 rounded-lg flex items-center gap-2 text-[11px] text-stone-400">
                 <Info size={14} className="text-amber-400 shrink-0" />
                 <span>
-                  O acervo local contém 551 registros com IDs únicos de 1 a 551. Ative a atualização dos existentes para corrigir os dados bibliográficos e as capas no caminho <code>users/{userId}/books/[1..551]</code>.
+                  O acervo local tem {localStats.total} registros e {localStats.hasUniqueIds ? 'IDs únicos' : 'IDs repetidos'}. Registros existentes serão preservados, a menos que você marque a opção de atualização.
                 </span>
               </div>
             )}
@@ -322,14 +316,14 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
                   disabled={isRunning}
                   className="rounded border-stone-700 bg-stone-900 text-amber-500 focus:ring-amber-500 focus:ring-offset-stone-900"
                 />
-                <span>Atualizar registros existentes com a base corrigida</span>
+                  <span>Atualizar registros existentes com os dados locais</span>
               </label>
               <span className="text-[11px] text-emerald-400 font-mono font-semibold">
-                {overwrite ? '✓ Correção completa (recomendado)' : 'Somente novos registros'}
+                {overwrite ? 'Sobrescrita ativada' : 'Somente novos registros'}
               </span>
             </div>
             <p className="text-[11px] text-stone-500 leading-relaxed">
-              A atualização substitui somente os campos presentes na base corrigida. Fichamentos, notas e outros campos adicionais já salvos no Firestore são preservados.
+              Desmarcado, o processo adiciona apenas IDs ausentes. Marcado, os campos presentes localmente substituem os correspondentes na nuvem; campos extras da nuvem permanecem.
             </p>
           </div>
 
@@ -405,7 +399,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
-              disabled={isRunning}
+              disabled={isRunning || !localStats.hasUniqueIds || localStats.total === 0}
               className="px-4 py-2 text-stone-400 hover:text-stone-200 text-xs font-semibold cursor-pointer disabled:opacity-50"
             >
               Fechar
@@ -423,7 +417,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
               ) : (
                 <>
                   <Database size={14} />
-                  <span>Aplicar Base Corrigida (551 Registros)</span>
+                  <span>Migrar {localStats.total} registros</span>
                 </>
               )}
             </button>

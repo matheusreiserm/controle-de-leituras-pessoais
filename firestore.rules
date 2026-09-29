@@ -13,5 +13,13 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.auth.token.email == "matheusreiserm@gmail.com";
     }
+
+    // Atomic numeric ID allocation for new books
+    match /users/{userId}/metadata/{metadataId} {
+      allow read, write: if metadataId == "bookIdCounter"
+        && request.auth != null
+        && request.auth.uid == userId
+        && request.auth.token.email == "matheusreiserm@gmail.com";
+    }
   }
 }

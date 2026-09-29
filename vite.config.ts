@@ -7,6 +7,7 @@ const appRoot = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig(() => {
   return {
+    base: process.env.GITHUB_ACTIONS === 'true' ? '/controle-de-leituras-pessoais/' : '/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

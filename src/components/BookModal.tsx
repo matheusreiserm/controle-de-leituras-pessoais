@@ -8,7 +8,7 @@ import { X, Save, BookOpen, Upload, Link, Image as ImageIcon, Trash2 } from 'luc
 interface BookModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (bookData: Omit<Book, 'id' | 'monthId'> & { id?: number }) => void;
+  onSave: (bookData: Omit<Book, 'id' | 'monthId'> & { id?: number }) => Promise<string | null>;
   initialData?: Book | null;
   totalBooksCount: number;
 }
@@ -38,6 +38,8 @@ export const BookModal: React.FC<BookModalProps> = ({
   const [rating, setRating] = useState<number>(5);
   const [coverUrl, setCoverUrl] = useState('');
   const [coverMode, setCoverMode] = useState<'upload' | 'url'>('url');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     if (initialData) {
@@ -89,30 +91,40 @@ export const BookModal: React.FC<BookModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !author.trim()) return;
+    if (!title.trim() || !author.trim() || isSaving) return;
 
     const continent = getCountryContinent(nationality);
-
-    onSave({
-      id: initialData?.id,
-      status: initialData?.status,
-      readingYear: Number(readingYear) || 2025,
-      title: title.trim(),
-      author: author.trim(),
-      year: Number(year) || 2024,
-      pages: Number(pages) || 1,
-      month,
-      nationality: nationality.trim(),
-      continent,
-      format,
-      language,
-      rating,
-      coverUrl: coverUrl.trim() || undefined,
-    });
-
-    onClose();
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      const error = await onSave({
+        id: initialData?.id,
+        status: initialData?.status,
+        readingYear: Number(readingYear) || 2025,
+        title: title.trim(),
+        author: author.trim(),
+        year: Number(year) || 2024,
+        pages: Number(pages) || 1,
+        month,
+        nationality: nationality.trim(),
+        continent,
+        format,
+        language,
+        rating,
+        coverUrl: coverUrl.trim() || undefined,
+      });
+      if (error) {
+        setSaveError(error);
+        return;
+      }
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar o livro.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const detectedContinent = getCountryContinent(nationality);
@@ -145,6 +157,11 @@ export const BookModal: React.FC<BookModalProps> = ({
 
         {/* Modal Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+          {saveError && (
+            <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+              {saveError}
+            </div>
+          )}
           {/* Title & Author */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
