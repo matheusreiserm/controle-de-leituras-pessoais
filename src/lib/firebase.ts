@@ -1,11 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
-  initializeAuth,
   getAuth,
-  browserLocalPersistence,
-  browserSessionPersistence,
-  indexedDBLocalPersistence,
-  inMemoryPersistence,
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
@@ -15,18 +10,7 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Prioritize browserLocalPersistence & session persistence over IndexedDB
-// to prevent "Database is closing/hidden" errors in iframe environments
-let authInstance;
-try {
-  authInstance = initializeAuth(app, {
-    persistence: [browserLocalPersistence, browserSessionPersistence, indexedDBLocalPersistence, inMemoryPersistence],
-  });
-} catch (e) {
-  authInstance = getAuth(app);
-}
-
-export const auth = authInstance;
+export const auth = getAuth(app);
 
 export const FIRESTORE_DATABASE_ID = '(default)';
 
