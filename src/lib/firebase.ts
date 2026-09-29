@@ -25,6 +25,11 @@ export const db = initializeFirestore(
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
+// Força a exibição da tela de consentimento para incluir escopos adicionais (Google Drive)
+googleProvider.setCustomParameters({
+  prompt: 'consent',
+});
+
 export const ALLOWED_EMAIL = 'matheusreiserm@gmail.com';
 
 const TOKEN_STORAGE_KEY = 'google_drive_oauth_token';
