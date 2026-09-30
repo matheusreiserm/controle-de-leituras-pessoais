@@ -100,6 +100,15 @@ export function sanitizeBookForFirestore(book: Book): Record<string, any> {
   return clean;
 }
 
+export function prepareBookForWrite(book: Book): Record<string, any> {
+  const clean = sanitizeBookForFirestore(book);
+  // Leave room for Firestore field/path overhead within its 1 MiB document limit.
+  if (new TextEncoder().encode(JSON.stringify(clean)).byteLength > 900_000) {
+    throw new Error(`O livro "${book.title}" ficou grande demais. Reduza a capa ou o fichamento antes de salvar.`);
+  }
+  return clean;
+}
+
 function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
   if (value && typeof value === 'object') {
@@ -185,7 +194,7 @@ export async function saveUserBook(userId: string, book: Book): Promise<void> {
   const path = `${getUserBooksPath(userId)}/${book.id}`;
   try {
     const docRef = doc(db, 'users', userId, 'books', String(book.id));
-    const data = sanitizeBookForFirestore(book);
+    const data = prepareBookForWrite(book);
     await setDoc(docRef, data, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -240,7 +249,7 @@ export async function createUserBook(
         lastId: book.id,
         requestIds: { ...requestIds, [requestId]: book.id },
       }, { merge: true });
-      transaction.set(doc(db, 'users', userId, 'books', String(book.id)), sanitizeBookForFirestore(book));
+      transaction.set(doc(db, 'users', userId, 'books', String(book.id)), prepareBookForWrite(book));
       return book;
     });
   } catch (error) {
@@ -249,15 +258,17 @@ export async function createUserBook(
 }
 
 export async function replaceUserBooks(userId: string, books: Book[]): Promise<void> {
+  // Validate the entire import before the first write. Eight bounded documents stay below 10 MiB per request.
+  const sanitized = books.map(prepareBookForWrite);
   const booksCol = collection(db, 'users', userId, 'books');
   const existingBooks = await getDocs(booksCol);
   const nextIds = new Set(books.map((book) => String(book.id)));
   const maxId = books.reduce((maximum, book) => Math.max(maximum, book.id), 0);
 
-  for (let index = 0; index < books.length; index += 400) {
+  for (let index = 0; index < books.length; index += 8) {
     const batch = writeBatch(db);
-    books.slice(index, index + 400).forEach((book) => {
-      batch.set(doc(db, 'users', userId, 'books', String(book.id)), sanitizeBookForFirestore(book));
+    books.slice(index, index + 8).forEach((book, offset) => {
+      batch.set(doc(db, 'users', userId, 'books', String(book.id)), sanitized[index + offset]);
     });
     await batch.commit();
   }
@@ -319,7 +330,7 @@ export async function migrateBooksToFirestore(
   }
 
   // Step 2: Batch upload in chunks of 50 (Firestore limit is 500 ops per batch)
-  const BATCH_SIZE = 50;
+  const BATCH_SIZE = 8;
   for (let i = 0; i < booksToMigrate.length; i += BATCH_SIZE) {
     const chunk = booksToMigrate.slice(i, i + BATCH_SIZE);
     const batch = writeBatch(db);
@@ -335,7 +346,7 @@ export async function migrateBooksToFirestore(
       } else {
         try {
           const docRef = doc(db, 'users', userId, 'books', docId);
-          const sanitized = sanitizeBookForFirestore(book);
+          const sanitized = prepareBookForWrite(book);
           batch.set(docRef, sanitized, { merge: true });
           batchOperations++;
           progress.imported++;

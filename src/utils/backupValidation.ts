@@ -74,6 +74,7 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
   }
 
   const validatedBooks: Book[] = [];
+  const seenIds = new Set<number>();
   const statsByYear: Record<number, number> = {};
 
   for (let i = 0; i < booksArray.length; i++) {
@@ -89,12 +90,15 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
 
     // ID validation
     const id = Number(item.id);
-    if (!Number.isFinite(id) || id <= 0) {
+    if (!Number.isSafeInteger(id) || id <= 0) {
       return {
         isValid: false,
         error: `Registro #${itemIndex} inválido: campo 'id' deve ser um número positivo (recebido: ${item.id}).`,
       };
     }
+
+    if (seenIds.has(id)) return { isValid: false, error: `ID ${id} duplicado no backup. Nenhum dado foi restaurado.` };
+    seenIds.add(id);
 
     // Title validation
     if (typeof item.title !== 'string' || !item.title.trim()) {
@@ -163,7 +167,7 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
             type: fi.type === 'citacao' || fi.type === 'resumo' || fi.type === 'referencia' ? fi.type : 'citacao',
           }))
         : [];
-      fichamento = { items };
+      fichamento = { items, ...(typeof item.fichamento.reference === 'string' ? { reference: item.fichamento.reference } : {}) };
     }
 
     const validatedBook: Book = {
@@ -181,7 +185,7 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
       monthId: Number(item.monthId) || 1,
       readingYear,
       yearBookId: typeof item.yearBookId === 'number' ? item.yearBookId : undefined,
-      coverUrl: typeof item.coverUrl === 'string' && item.coverUrl.trim() ? item.coverUrl.trim() : undefined,
+      coverUrl: typeof item.coverUrl === 'string' ? item.coverUrl.trim() : undefined,
       genre: typeof item.genre === 'string' && item.genre.trim() ? item.genre.trim() : undefined,
       notes: typeof item.notes === 'string' && item.notes.trim() ? item.notes.trim() : undefined,
       status,

@@ -1,0 +1,27 @@
+name: Verify app
+
+on:
+  pull_request:
+  push:
+    branches: ['codex/capas-backup-confiavel']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run test
+      - run: bun run lint
+      - run: bun run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-site
+          path: dist

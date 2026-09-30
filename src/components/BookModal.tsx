@@ -1,9 +1,10 @@
+import { CoverInput } from './CoverInput';
 import React, { useState, useEffect } from 'react';
 import { Book, FormatType, LanguageType, MonthName } from '../types';
 import { MONTHS_LIST, getCountryContinent, COUNTRY_NAMES_LIST } from '../utils/helpers';
 import { StarRating } from './StarRating';
 import { CountryFlag } from './CountryFlag';
-import { X, Save, BookOpen, Upload, Link, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { X, Save, BookOpen } from 'lucide-react';
 
 interface BookModalProps {
   isOpen: boolean;
@@ -37,7 +38,7 @@ export const BookModal: React.FC<BookModalProps> = ({
   const [language, setLanguage] = useState<LanguageType>('Português');
   const [rating, setRating] = useState<number>(5);
   const [coverUrl, setCoverUrl] = useState('');
-  const [coverMode, setCoverMode] = useState<'upload' | 'url'>('url');
+  const [coverPending, setCoverPending] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -54,7 +55,7 @@ export const BookModal: React.FC<BookModalProps> = ({
       setLanguage(initialData.language === ('Francês' as any) ? 'Inglês' : initialData.language);
       setRating(initialData.rating);
       setCoverUrl(initialData.coverUrl || '');
-      setCoverMode(initialData.coverUrl?.startsWith('data:') ? 'upload' : 'url');
+
     } else {
       // Reset defaults for new book (Current Year: 2026, Current Month: Agosto, Cover: URL da Web)
       setReadingYear(getCurrentYear());
@@ -68,32 +69,15 @@ export const BookModal: React.FC<BookModalProps> = ({
       setLanguage('Português');
       setRating(5);
       setCoverUrl('');
-      setCoverMode('url');
+
     }
   }, [initialData, isOpen]);
 
   if (!isOpen) return null;
 
-  // Handle local file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('A imagem é muito grande. Por favor escolha um arquivo menor que 5MB.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        setCoverUrl(base64);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !author.trim() || isSaving) return;
+    if (!title.trim() || !author.trim() || isSaving || coverPending) return;
 
     const continent = getCountryContinent(nationality);
     setIsSaving(true);
@@ -113,7 +97,7 @@ export const BookModal: React.FC<BookModalProps> = ({
         format,
         language,
         rating,
-        coverUrl: coverUrl.trim() || undefined,
+        coverUrl: coverUrl.trim(),
       });
       if (error) {
         setSaveError(error);
@@ -346,111 +330,7 @@ export const BookModal: React.FC<BookModalProps> = ({
             </div>
           </div>
 
-          {/* Cover Image Upload Options (Computer file or Web URL) */}
-          <div className="space-y-2 pt-2 border-t border-stone-200 dark:border-stone-800">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold text-stone-700 dark:text-stone-300">
-                Capa do Livro (Imagem)
-              </label>
-
-              {/* Mode Toggle Tabs */}
-              <div className="inline-flex rounded-lg bg-stone-100 dark:bg-stone-800 p-0.5 border border-stone-200 dark:border-stone-700">
-                <button
-                  type="button"
-                  onClick={() => setCoverMode('upload')}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                    coverMode === 'upload'
-                      ? 'bg-amber-600 text-white shadow-sm'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-                  }`}
-                >
-                  <Upload size={12} />
-                  <span>Do Computador</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCoverMode('url')}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                    coverMode === 'url'
-                      ? 'bg-amber-600 text-white shadow-sm'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
-                  }`}
-                >
-                  <Link size={12} />
-                  <span>URL da Web</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Upload Area */}
-            {coverMode === 'upload' ? (
-              <div>
-                <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-amber-300 dark:border-amber-800/60 hover:border-amber-500 bg-amber-50/30 dark:bg-amber-950/10 rounded-xl cursor-pointer group transition-all">
-                  <Upload size={22} className="text-amber-600 dark:text-amber-400 mb-1.5 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-                    Clique ou arraste uma imagem do seu computador
-                  </span>
-                  <span className="text-[10px] text-stone-400 mt-0.5">
-                    Formatos aceitos: JPG, PNG, WEBP (Máx 5MB)
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-            ) : (
-              <div>
-                <input
-                  type="url"
-                  placeholder="https://exemplo.com/imagem-da-capa.jpg"
-                  value={coverUrl}
-                  onChange={(e) => setCoverUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-xl text-xs sm:text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            )}
-
-            {/* Live Cover Preview if coverUrl exists */}
-            {coverUrl && (
-              <div className="flex items-center gap-3 p-2 bg-stone-50 dark:bg-stone-800/80 rounded-xl border border-stone-200 dark:border-stone-700">
-                <div className="w-12 h-16 rounded-md overflow-hidden bg-stone-200 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 shrink-0">
-                  <img
-                    src={coverUrl}
-                    alt="Prévia da Capa"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-stone-800 dark:text-stone-200 truncate">
-                    Capa Selecionada
-                  </p>
-                  <p className="text-[10px] text-stone-400 truncate">
-                    {coverUrl.startsWith('data:') ? 'Arquivo do Computador (Base64)' : coverUrl}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCoverUrl('')}
-                  className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
-                  title="Remover capa"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            )}
-
-            {!coverUrl && (
-              <p className="text-[10px] text-stone-400">
-                Se nenhuma capa for inserida, o sistema criará uma capa estilizada com gradiente e tipografia.
-              </p>
-            )}
-          </div>
+          <CoverInput value={coverUrl} onChange={setCoverUrl} onPendingChange={setCoverPending} />
 
           {/* Modal Footer Actions */}
           <div className="pt-4 border-t border-stone-200 dark:border-stone-800 flex items-center justify-end gap-2">
@@ -463,6 +343,7 @@ export const BookModal: React.FC<BookModalProps> = ({
             </button>
             <button
               type="submit"
+                disabled={isSaving || coverPending}
               className="flex items-center gap-2 px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow transition-all cursor-pointer"
             >
               <Save size={15} />

@@ -93,7 +93,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         setFeedback({
           type: 'success',
           text: `Backup restaurado com sucesso do Google Drive! (${validation.totalRecords} leituras validadas)`,
-          details: `Formato: ${validation.version || '1.0.0'}. Integridade dos campos 100% verificada.`,
+          details: result.message,
         });
       } else {
         setFeedback({ type: 'error', text: result.message });
@@ -264,7 +264,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                   Exportar para o Drive
                 </span>
                 <span className="text-[10px] text-stone-500 text-center">
-                  Salva em Google AI Studio/Backups
+                  Salva na pasta Backups do aplicativo
                 </span>
               </button>
 

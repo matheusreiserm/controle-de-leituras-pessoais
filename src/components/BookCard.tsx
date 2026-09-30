@@ -1,3 +1,4 @@
+import { resolveCoverUrl } from '../utils/covers';
 import React from 'react';
 import { Book } from '../types';
 import { StarRating } from './StarRating';
@@ -81,7 +82,7 @@ export const BookCard: React.FC<BookCardProps> = ({
         >
           {book.coverUrl ? (
             <img
-              src={book.coverUrl}
+              src={resolveCoverUrl(book.coverUrl)} key={book.coverUrl}
               alt={book.title}
               className="w-full h-full object-cover"
               onError={(e) => {

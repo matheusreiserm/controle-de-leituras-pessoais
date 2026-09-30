@@ -1,367 +1,185 @@
 import { Book } from '../types';
-import { getAccessToken, setAccessToken, loginWithGoogle } from './firebase';
+import { auth, getAccessToken, setAccessToken, loginWithGoogle } from './firebase';
+import { createBackupPayload, validateBackupPayload } from '../utils/backupValidation';
 
-const BACKUPS_FOLDER_NAME = 'Backups';
-const BACKUP_FILE_NAME = 'controle_leituras_backup.json';
-const BACKUP_FILE_PREFIX = 'controle_leituras_backup_';
-const BACKUP_RETENTION_COUNT = 4;
-const AUTO_BACKUP_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
-
-interface DriveBackupFile {
-  id: string;
-  name: string;
-  modifiedTime?: string;
+const API = 'https://www.googleapis.com/drive/v3/files';
+const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
+const PREFIX = 'controle_leituras_backup_';
+const RETENTION = 4;
+const WEEK = 7 * 24 * 60 * 60 * 1000;
+interface DriveFile {
+  id: string; name: string; modifiedTime?: string; size?: string;
   appProperties?: Record<string, string>;
 }
+interface Result { success: boolean; message: string; fileId?: string; folderId?: string; books?: Book[] }
+type Request = (url: string, init?: RequestInit) => Promise<Response>;
 
-/**
- * Ensures an OAuth access token is available.
- * If interactive is true, prompts Google sign-in popup if token is missing.
- * If interactive is false, returns null if token is not already in memory/storage.
- */
-async function ensureToken(interactive: boolean = true): Promise<string | null> {
+async function connection(interactive: boolean): Promise<Request> {
   let token = getAccessToken();
-  if (!token && interactive) {
-    try {
-      const res = await loginWithGoogle();
-      token = res?.accessToken || null;
-    } catch (err: any) {
-      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-        throw new Error('A autorização com o Google foi cancelada antes de concluir.');
-      }
-      throw new Error(err?.message || 'Falha ao autenticar com a Conta Google.');
-    }
-  }
-  return token;
-}
-
-async function getOrCreateFolder(
-  token: string,
-  folderName: string,
-  parentId?: string
-): Promise<string> {
-  let queryStr = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  if (parentId) {
-    queryStr += ` and '${parentId}' in parents`;
-  }
-  const query = encodeURIComponent(queryStr);
-
-  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!searchRes.ok) {
-    if (searchRes.status === 401) {
+  if (!token && interactive) token = (await loginWithGoogle()).accessToken;
+  if (!token) throw new Error('Backup aguardando autorização do Drive. Use Exportar para o Drive para reconectar.');
+  return async (url, init = {}) => {
+    const send = () => fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(120000) });
+    let response = await send();
+    if (response.status === 401) {
       setAccessToken(null);
-      throw new Error('TOKEN_EXPIRED');
-    }
-    throw new Error(`Erro ao buscar pasta '${folderName}' no Drive (${searchRes.status})`);
-  }
-
-  const searchData = await searchRes.json();
-  if (searchData.files && searchData.files.length > 0) {
-    return searchData.files[0].id;
-  }
-
-  // Create folder if it doesn't exist
-  const createBody: { name: string; mimeType: string; parents?: string[] } = {
-    name: folderName,
-    mimeType: 'application/vnd.google-apps.folder',
-  };
-  if (parentId) {
-    createBody.parents = [parentId];
-  }
-
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(createBody),
-  });
-
-  if (!createRes.ok) {
-    if (createRes.status === 401) {
-      setAccessToken(null);
-      throw new Error('TOKEN_EXPIRED');
-    }
-    throw new Error(`Erro ao criar pasta '${folderName}' no Google Drive.`);
-  }
-
-  const folderData = await createRes.json();
-  return folderData.id;
-}
-
-/**
- * Ensures 'Backups' folder exists directly in Google Drive root.
- * Returns the folder ID for 'Backups'.
- */
-export async function ensureBackupsFolder(token: string): Promise<{ backupsFolderId: string }> {
-  const backupsFolderId = await getOrCreateFolder(token, BACKUPS_FOLDER_NAME);
-  return { backupsFolderId };
-}
-
-async function listBackupVersions(token: string, folderId: string): Promise<DriveBackupFile[]> {
-  const query = encodeURIComponent(
-    `'${folderId}' in parents and name contains '${BACKUP_FILE_PREFIX}' and trashed=false`
-  );
-  const response = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=modifiedTime%20desc&pageSize=100&fields=files(id,name,modifiedTime,appProperties)`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!response.ok) throw new Error(`Erro ao listar versões de backup no Drive (${response.status})`);
-  const data = await response.json();
-  return (data.files || []) as DriveBackupFile[];
-}
-
-async function getBooksFingerprint(books: Book[]): Promise<string> {
-  const content = new TextEncoder().encode(JSON.stringify(books));
-  const digest = await crypto.subtle.digest('SHA-256', content);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Export app state to 'Backups/controle_leituras_backup_[timestamp].json'.
- */
-export async function exportToGoogleDrive(
-  books: Book[],
-  interactive: boolean = true,
-  automatic: boolean = false
-): Promise<{ success: boolean; message: string; fileId?: string }> {
-  try {
-    let token = await ensureToken(interactive);
-
-    if (!token) {
       if (interactive) {
-        return {
-          success: false,
-          message: 'Autenticação com a conta Google necessária para acessar o Google Drive.',
-        };
-      }
-      return {
-        success: false,
-        message: 'Sincronização em segundo plano aguardando autorização.',
-      };
-    }
-
-    let backupsFolderId: string;
-    try {
-      const folderRes = await ensureBackupsFolder(token);
-      backupsFolderId = folderRes.backupsFolderId;
-    } catch (err: any) {
-      if (err?.message === 'TOKEN_EXPIRED' && interactive) {
-        const res = await loginWithGoogle();
-        if (res?.accessToken) {
-          token = res.accessToken;
-          const folderRes = await ensureBackupsFolder(token);
-          backupsFolderId = folderRes.backupsFolderId;
-        } else {
-          throw err;
-        }
-      } else {
-        throw err;
+        token = (await loginWithGoogle()).accessToken;
+        if (token) response = await send();
       }
     }
-
-    const fingerprint = await getBooksFingerprint(books);
-    const backupVersions = await listBackupVersions(token, backupsFolderId);
-    const latestBackup = backupVersions[0];
-    if (latestBackup?.appProperties?.contentHash === fingerprint) {
-      return { success: true, message: 'Backup ignorado: o acervo não mudou desde a última versão.' };
+    if (!response.ok) {
+      let detail = '';
+      try { const body = await response.json(); detail = body?.error?.message || ''; } catch { /* non-JSON error */ }
+      if (response.status === 401) throw new Error('Autorização do Drive expirada. Use Exportar ou Importar para reconectar.');
+      if (response.status === 403) throw new Error(`O Google Drive negou acesso (403). ${detail || 'Verifique a autorização e se a Drive API está ativada.'}`);
+      throw new Error(`Falha no Google Drive (${response.status}). ${detail}`);
     }
-    if (
-      automatic &&
-      latestBackup?.modifiedTime &&
-      Date.now() - Date.parse(latestBackup.modifiedTime) < AUTO_BACKUP_INTERVAL_MS
-    ) {
-      return { success: true, message: 'Backup automático aguardando o intervalo semanal.' };
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `${BACKUP_FILE_PREFIX}${timestamp}.json`;
-    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: fileName,
-        parents: [backupsFolderId],
-        mimeType: 'application/json',
-        appProperties: { contentHash: fingerprint },
-      }),
-    });
-
-    if (!createRes.ok) {
-      throw new Error(`Erro ao criar novo backup na pasta 'Backups' (${createRes.status}).`);
-    }
-
-    const createdFile = await createRes.json();
-    const fileId = createdFile.id;
-
-    // Overwrite content
-    const jsonContent = JSON.stringify(books, null, 2);
-    const updateRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: jsonContent,
-    });
-
-    if (!updateRes.ok) {
-      throw new Error(`Falha ao atualizar o arquivo no Drive (${updateRes.status})`);
-    }
-
-    try {
-      const savedVersions = await listBackupVersions(token, backupsFolderId);
-      await Promise.all(
-        savedVersions.slice(BACKUP_RETENTION_COUNT).map((backup) =>
-          fetch(`https://www.googleapis.com/drive/v3/files/${backup.id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` },
-          })
-        )
-      );
-    } catch (error) {
-      console.warn('Não foi possível aplicar a retenção de backups:', error);
-    }
-
-    return {
-      success: true,
-      message: `Backup versionado salvo no Drive (${books.length} leituras). As ${BACKUP_RETENTION_COUNT} versões mais recentes são mantidas.`,
-      fileId,
-    };
-  } catch (error: any) {
-    if (interactive) {
-      console.warn('Export error:', error);
-    }
-    return {
-      success: false,
-      message: error.message || 'Erro ao exportar backup para o Google Drive.',
-    };
-  }
+    return response;
+  };
 }
 
-/**
- * Import backup file from 'Backups/controle_leituras_backup.json' or latest versioned backup.
- */
-export async function importFromGoogleDrive(
-  interactive: boolean = true
-): Promise<{ success: boolean; message: string; books?: Book[] }> {
+async function list(request: Request, query: string): Promise<DriveFile[]> {
+  const files: DriveFile[] = [];
+  let pageToken = '';
+  do {
+    const params = new URLSearchParams({
+      q: query, pageSize: '100', orderBy: 'modifiedTime desc',
+      fields: 'nextPageToken,files(id,name,modifiedTime,size,appProperties)',
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const data = await (await request(`${API}?${params}`)).json();
+    files.push(...(data.files || []));
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return files;
+}
+
+function isBackup(file: DriveFile) {
+  return /^controle_leituras_backup(?:_\d{4}-\d{2}-\d{2}T[\dTZ.-]+)?\.json$/i.test(file.name);
+}
+async function backups(request: Request, folderId: string) {
+  const files = await list(request, `'${folderId.replace(/'/g, "\\'")}' in parents and trashed=false`);
+  return files.filter(isBackup).sort((a, b) => (b.modifiedTime || '').localeCompare(a.modifiedTime || '') || b.name.localeCompare(a.name));
+}
+function folderKey() { return `reading_backup_folder_${auth.currentUser?.uid || 'owner'}`; }
+function rememberFolder(id: string) { try { localStorage.setItem(folderKey(), id); } catch { /* storage optional */ } }
+
+async function findFolder(request: Request, create: boolean): Promise<string> {
+  // Re-discover on each device; a local preference is only a hint, never a reason to create a duplicate.
+  const folders = await list(request, "name='Backups' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false");
+  let remembered: string | null = null;
+  try { remembered = localStorage.getItem(folderKey()); } catch { /* storage optional */ }
+  const previous = folders.find(folder => folder.id === remembered);
+  if (previous) return previous.id;
+  if (folders.length === 1) { rememberFolder(folders[0].id); return folders[0].id; }
+  if (folders.length > 1) {
+    const candidates = await Promise.all(folders.map(async folder => ({ folder, latest: (await backups(request, folder.id))[0] })));
+    const populated = candidates.filter(item => item.latest);
+    if (populated.length === 1) { rememberFolder(populated[0].folder.id); return populated[0].folder.id; }
+    throw new Error('Há mais de uma pasta Backups acessível ao aplicativo. Renomeie as pastas antigas no Drive, mantendo Backups apenas na pasta usada pelo aplicativo.');
+  }
+  if (!create) throw new Error('A pasta Backups do aplicativo não foi encontrada. Exporte um backup antes de restaurar.');
+  const folder = await (await request(API, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Backups', mimeType: 'application/vnd.google-apps.folder' }),
+  })).json();
+  rememberFolder(folder.id);
+  return folder.id;
+}
+
+function parseBackup(text: string, file: DriveFile): Book[] {
+  let parsed: unknown;
+  if (!text.trim()) throw new Error(`O backup "${file.name}" está vazio. Nenhum dado foi restaurado.`);
+  try { parsed = JSON.parse(text.replace(/^\uFEFF/, '')); }
+  catch { throw new Error(`O backup "${file.name}" não contém JSON válido. Nenhum dado foi restaurado.`); }
+  const result = validateBackupPayload(parsed);
+  if (!result.isValid || !result.books) throw new Error(`Backup "${file.name}": ${result.error}`);
+  return result.books;
+}
+
+async function fingerprint(books: Book[]) {
+  const stable = (value: any): any => Array.isArray(value) ? value.map(stable) :
+    value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().filter(k => value[k] !== undefined).map(k => [k, stable(value[k])])) : value;
+  const bytes = new TextEncoder().encode(JSON.stringify(stable([...books].sort((a, b) => a.id - b.id))));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+}
+
+let exportInProgress = false;
+export async function exportToGoogleDrive(books: Book[], interactive = true, automatic = false): Promise<Result> {
+  if (exportInProgress) return { success: false, message: 'Já há um backup em andamento. Aguarde a conclusão.' };
+  exportInProgress = true;
   try {
-    let token = await ensureToken(interactive);
-
-    if (!token) {
-      return {
-        success: false,
-        message: 'Autenticação com a conta Google necessária para importar do Google Drive.',
-      };
+    const validation = validateBackupPayload(books);
+    if (!validation.isValid) throw new Error(validation.error);
+    const request = await connection(interactive);
+    const folderId = await findFolder(request, true);
+    const versions = await backups(request, folderId);
+    const latest = versions[0];
+    const hash = await fingerprint(books);
+    if (latest?.appProperties?.contentHash === hash && latest.appProperties.verified === 'true') {
+      return { success: true, message: 'Backup ignorado: o acervo não mudou desde a última versão verificada.', folderId };
     }
-
-    let backupsFolderId: string;
-
-    try {
-      const folderRes = await ensureBackupsFolder(token);
-      backupsFolderId = folderRes.backupsFolderId;
-    } catch (err: any) {
-      if (err?.message === 'TOKEN_EXPIRED' && interactive) {
-        const res = await loginWithGoogle();
-        if (res?.accessToken) {
-          token = res.accessToken;
-          const folderRes = await ensureBackupsFolder(token);
-          backupsFolderId = folderRes.backupsFolderId;
-        } else {
-          throw err;
-        }
-      } else {
-        throw err;
-      }
+    if (automatic && latest?.modifiedTime && latest.appProperties?.verified === 'true' && Date.now() - Date.parse(latest.modifiedTime) < WEEK) {
+      return { success: true, message: 'Backup automático aguardando o intervalo semanal.', folderId };
     }
-
-    // 1. Prioriza a versão mais recente dos backups versionados
-    const backupVersions = await listBackupVersions(token, backupsFolderId);
-    let fileId: string | null = backupVersions[0]?.id || null;
-
-    // 2. Busca pelo nome fixo padrão caso não haja versionados
-    const query = encodeURIComponent(`name='${BACKUP_FILE_NAME}' and '${backupsFolderId}' in parents and trashed=false`);
-    let searchRes = fileId ? null : await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (searchRes && !searchRes.ok && searchRes.status === 401 && interactive) {
-      const res = await loginWithGoogle();
-      if (res?.accessToken) {
-        token = res.accessToken;
-        searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-    }
-
-    const searchData = searchRes?.ok ? await searchRes.json() : { files: [] };
-    if (!fileId) fileId = searchData.files && searchData.files.length > 0 ? searchData.files[0].id : null;
-
-    // 3. Fallback: Qualquer arquivo JSON existente dentro da pasta Backups
-    if (!fileId) {
-      const fallbackQuery = encodeURIComponent(`'${backupsFolderId}' in parents and mimeType='application/json' and trashed=false`);
-      const fbRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${fallbackQuery}`, {
-        headers: { Authorization: `Bearer ${token}` },
+    const name = `${PREFIX}${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    const metadata = { name, parents: [folderId], mimeType: 'application/json', appProperties: { contentHash: hash, verified: 'false' } };
+    const body = JSON.stringify(createBackupPayload(books));
+    let upload: Response;
+    if (new Blob([body]).size <= 5 * 1024 * 1024) {
+      const boundary = `reading_${crypto.randomUUID()}`;
+      const multipart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${boundary}--`;
+      upload = await request(`${UPLOAD}?uploadType=multipart&fields=id,name`, {
+        method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body: multipart,
       });
-      if (fbRes.ok) {
-        const fbData = await fbRes.json();
-        if (fbData.files && fbData.files.length > 0) {
-          fileId = fbData.files[0].id;
-        }
-      }
+    } else {
+      const start = await request(`${UPLOAD}?uploadType=resumable&fields=id,name`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Upload-Content-Type': 'application/json' },
+        body: JSON.stringify(metadata),
+      });
+      const location = start.headers.get('Location');
+      if (!location || new URL(location).origin !== 'https://www.googleapis.com') throw new Error('O Drive não retornou um endereço válido para enviar o backup.');
+      upload = await request(location, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
     }
-
-    if (!fileId) {
-      return {
-        success: false,
-        message: "Nenhum arquivo de backup foi encontrado na pasta 'Backups' no seu Google Drive.",
-      };
-    }
-
-    // Fetch file content
-    const downloadRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const saved = await upload.json() as DriveFile;
+    if (!saved.id) throw new Error('O Drive não confirmou o arquivo de backup.');
+    saved.name = name;
+    // Verify the downloaded bytes before retiring any older backup.
+    const downloaded = await (await request(`${API}/${encodeURIComponent(saved.id)}?alt=media`)).text();
+    parseBackup(downloaded, saved);
+    const original = JSON.parse(downloaded);
+    if (await fingerprint(Array.isArray(original) ? original : original.books) !== hash) throw new Error(`O backup "${name}" não passou na conferência. Os backups anteriores foram mantidos.`);
+    await request(`${API}/${encodeURIComponent(saved.id)}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appProperties: { contentHash: hash, verified: 'true' } }),
     });
-
-    if (!downloadRes.ok) {
-      if (downloadRes.status === 401) {
-        setAccessToken(null);
-      }
-      throw new Error(`Não foi possível baixar o arquivo de backup do Drive (${downloadRes.status})`);
-    }
-
-    const jsonText = await downloadRes.text();
-    let parsed: any;
+    let retentionWarning = '';
     try {
-      parsed = JSON.parse(jsonText);
-    } catch (e) {
-      throw new Error('O arquivo de backup no Drive não contém um formato JSON válido.');
-    }
+      // Preserve legacy/manual backups; only retire versions verified by this app.
+      const verified = (await backups(request, folderId)).filter(file => file.appProperties?.verified === 'true');
+      for (const file of verified.filter(file => file.id !== saved.id).slice(RETENTION - 1)) {
+        await request(`${API}/${encodeURIComponent(file.id)}`, { method: 'DELETE' });
+      }
+    } catch { retentionWarning = ' As cópias antigas foram mantidas porque a limpeza não foi concluída.'; }
+    return { success: true, message: `Backup salvo e conferido: ${name} (${books.length} leituras).${retentionWarning}`, fileId: saved.id, folderId };
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : 'Falha ao salvar o backup no Drive.' };
+  } finally { exportInProgress = false; }
+}
 
-    if (!Array.isArray(parsed)) {
-      throw new Error('Estrutura de dados do backup inválida (esperava-se uma lista de livros).');
-    }
-
-    return {
-      success: true,
-      message: `Backup restaurado com sucesso do Google Drive! (${parsed.length} leituras carregadas)`,
-      books: parsed as Book[],
-    };
-  } catch (error: any) {
-    if (interactive) {
-      console.warn('Import error:', error);
-    }
-    return {
-      success: false,
-      message: error.message || 'Erro ao importar backup do Google Drive.',
-    };
+export async function importFromGoogleDrive(interactive = true): Promise<Result> {
+  try {
+    const request = await connection(interactive);
+    const folderId = await findFolder(request, false);
+    const file = (await backups(request, folderId))[0];
+    if (!file) return { success: false, message: 'Nenhum backup de leituras foi encontrado na pasta Backups do aplicativo.', folderId };
+    if (file.appProperties?.verified === 'false') throw new Error(`O backup "${file.name}" não concluiu a conferência. Exporte uma nova cópia ou restaure um backup anterior pelo arquivo JSON.`);
+    const text = await (await request(`${API}/${encodeURIComponent(file.id)}?alt=media`)).text();
+    const books = parseBackup(text, file);
+    return { success: true, message: `Backup lido: ${file.name} (${books.length} leituras).`, books, fileId: file.id, folderId };
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : 'Falha ao importar o backup do Drive.' };
   }
 }

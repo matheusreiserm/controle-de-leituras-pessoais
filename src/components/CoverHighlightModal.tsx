@@ -1,3 +1,4 @@
+import { resolveCoverUrl } from '../utils/covers';
 import React from 'react';
 import { Book } from '../types';
 import { StarRating } from './StarRating';
@@ -74,7 +75,7 @@ export const CoverHighlightModal: React.FC<CoverHighlightModalProps> = ({
           <div className="relative group w-44 h-64 rounded-lg overflow-hidden shadow-2xl border border-stone-700/60 transition-transform duration-300 hover:scale-105">
             {book.coverUrl ? (
               <img
-                src={book.coverUrl}
+                src={resolveCoverUrl(book.coverUrl)} key={book.coverUrl}
                 alt={book.title}
                 className="w-full h-full object-cover"
                 onError={(e) => {
