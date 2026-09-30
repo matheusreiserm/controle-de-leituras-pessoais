@@ -1,3 +1,4 @@
+import { resolveCoverUrl } from '../utils/covers';
 import React, { useState } from 'react';
 import { Book } from '../types';
 import { Bookmark, Plus, CheckCircle2, Trash2, BookOpen } from 'lucide-react';
@@ -112,7 +113,7 @@ export const WishlistView: React.FC<WishlistViewProps> = ({
               >
                 {b.coverUrl ? (
                   <img
-                    src={b.coverUrl}
+                    src={resolveCoverUrl(b.coverUrl)} key={b.coverUrl}
                     alt={b.title}
                     className="w-10 h-14 object-cover rounded-lg shrink-0 hover:scale-105 transition-transform"
                     referrerPolicy="no-referrer"

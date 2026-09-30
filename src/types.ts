@@ -44,6 +44,7 @@ export interface Book {
   format: FormatType;      // Format used
   language: LanguageType;  // Reading language, or explicitly unknown when absent from the source
   rating: number;          // 1 to 6 stars
+  dataSource?: string;    // Original catalog provenance
   coverUrl?: string;       // Cover image URL or null
   notes?: string;          // Optional user notes
   genre?: string;          // Optional literary genre

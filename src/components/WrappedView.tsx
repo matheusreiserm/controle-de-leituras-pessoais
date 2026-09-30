@@ -1,3 +1,4 @@
+import { resolveCoverUrl } from '../utils/covers';
 import React, { useState } from 'react';
 import { Book } from '../types';
 import { Sparkles, Trophy, Flame, Globe2, Award, Star } from 'lucide-react';
@@ -140,7 +141,7 @@ export const WrappedView: React.FC<WrappedViewProps> = ({ books, availableYears 
               >
                 {b.coverUrl ? (
                   <img
-                    src={b.coverUrl}
+                    src={resolveCoverUrl(b.coverUrl)} key={b.coverUrl}
                     alt={b.title}
                     className="w-full h-36 object-cover rounded-xl shadow-md group-hover:scale-105 transition-transform"
                     referrerPolicy="no-referrer"

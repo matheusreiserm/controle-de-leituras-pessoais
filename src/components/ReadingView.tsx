@@ -1,3 +1,5 @@
+import { CoverInput } from './CoverInput';
+import { resolveCoverUrl } from '../utils/covers';
 import React, { useState } from 'react';
 import { Book, FormatType, LanguageType, MonthName } from '../types';
 import { MONTHS_LIST, getCountryContinent, getCoverGradient, getContinentColors } from '../utils/helpers';
@@ -24,7 +26,7 @@ import {
 
 interface ReadingViewProps {
   books: Book[];
-  onAddReading: (bookData: Omit<Book, 'id' | 'monthId'>) => void;
+  onAddReading: (bookData: Omit<Book, 'id' | 'monthId'>) => Promise<string | null>;
   onEditReading: (book: Book) => void;
   onDeleteReading: (id: number) => void;
   onCompleteReading: (bookId: number, rating: number, month: MonthName, year: number) => void;
@@ -66,7 +68,9 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
   const [format, setFormat] = useState<FormatType>('Físico');
   const [language, setLanguage] = useState<LanguageType>('Português');
   const [coverUrl, setCoverUrl] = useState('');
-  const [coverMode, setCoverMode] = useState<'upload' | 'url'>('url');
+  const [coverPending, setCoverPending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const handleOpenAdd = () => {
     setTitle('');
@@ -77,16 +81,19 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
     setFormat('Físico');
     setLanguage('Português');
     setCoverUrl('');
-    setCoverMode('url');
+    setCoverPending(false);
+    setSaveError('');
     setIsAddModalOpen(true);
   };
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !author.trim()) return;
+    if (!title.trim() || !author.trim() || saving || coverPending) return;
 
     const continent = getCountryContinent(nationality);
-    onAddReading({
+    setSaving(true); setSaveError('');
+    try {
+    const error = await onAddReading({
       title: title.trim(),
       author: author.trim(),
       year: Number(pubYear) || getCurrentYear(),
@@ -102,23 +109,10 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
       coverUrl: coverUrl.trim() || undefined,
     });
 
+    if (error) { setSaveError(error); return; }
     setIsAddModalOpen(false);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert('A imagem é muito grande. Por favor escolha um arquivo menor que 5MB.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        setCoverUrl(base64);
-      };
-      reader.readAsDataURL(file);
-    }
+    } catch (error) { setSaveError(error instanceof Error ? error.message : 'Falha ao salvar o livro.'); }
+    finally { setSaving(false); }
   };
 
   const handleStartComplete = (book: Book) => {
@@ -234,7 +228,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                   >
                     {book.coverUrl ? (
                       <img
-                        src={book.coverUrl}
+                        src={resolveCoverUrl(book.coverUrl)} key={book.coverUrl}
                         alt={book.title}
                         className="w-full h-full object-cover"
                         onError={(e) => {
@@ -477,51 +471,8 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                 </div>
               </div>
 
-              {/* Cover input */}
-              <div className="space-y-2 pt-2 border-t border-stone-800">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-stone-300">Capa do Livro (Opcional)</label>
-                  <div className="flex items-center gap-1 bg-stone-950 p-0.5 rounded-lg border border-stone-800">
-                    <button
-                      type="button"
-                      onClick={() => setCoverMode('url')}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
-                        coverMode === 'url' ? 'bg-amber-500 text-stone-950' : 'text-stone-400 hover:text-white'
-                      }`}
-                    >
-                      <LinkIcon size={10} className="inline mr-1" />
-                      URL
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCoverMode('upload')}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all ${
-                        coverMode === 'upload' ? 'bg-amber-500 text-stone-950' : 'text-stone-400 hover:text-white'
-                      }`}
-                    >
-                      <Upload size={10} className="inline mr-1" />
-                      Upload
-                    </button>
-                  </div>
-                </div>
-
-                {coverMode === 'url' ? (
-                  <input
-                    type="url"
-                    value={coverUrl}
-                    onChange={(e) => setCoverUrl(e.target.value)}
-                    placeholder="https://exemplo.com/capa.jpg"
-                    className="w-full px-3 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-100 placeholder-stone-600 focus:outline-none focus:border-amber-500"
-                  />
-                ) : (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="w-full text-xs text-stone-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-500/20 file:text-amber-300 hover:file:bg-amber-500/30 cursor-pointer"
-                  />
-                )}
-              </div>
+              <CoverInput value={coverUrl} onChange={setCoverUrl} onPendingChange={setCoverPending} />
+              {saveError && <p role="alert" className="text-xs text-rose-400">{saveError}</p>}
 
               <div className="flex justify-end gap-2 pt-4 border-t border-stone-800">
                 <button
@@ -533,6 +484,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                 </button>
                 <button
                   type="submit"
+                  disabled={saving || coverPending}
                   className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
                 >
                   Iniciar Leitura

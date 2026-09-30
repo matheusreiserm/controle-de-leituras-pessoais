@@ -1,3 +1,4 @@
+import { getAccessToken, setAccessToken } from './driveToken';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
@@ -32,63 +33,7 @@ googleProvider.setCustomParameters({
 
 export const ALLOWED_EMAIL = 'matheusreiserm@gmail.com';
 
-const TOKEN_STORAGE_KEY = 'google_drive_oauth_token';
-const TOKEN_TIME_KEY = 'google_drive_oauth_token_time';
-const TOKEN_MAX_AGE_MS = 50 * 60 * 1000; // 50 minutes (Google tokens typically last 60 minutes)
-
-let cachedAccessToken: string | null = null;
-
-export const setAccessToken = (token: string | null) => {
-  cachedAccessToken = token;
-  if (typeof window !== 'undefined') {
-    if (token) {
-      try {
-        localStorage.setItem(TOKEN_STORAGE_KEY, token);
-        localStorage.setItem(TOKEN_TIME_KEY, Date.now().toString());
-        sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
-      } catch (e) {
-        // storage quota / privacy mode fallback
-      }
-    } else {
-      try {
-        localStorage.removeItem(TOKEN_STORAGE_KEY);
-        localStorage.removeItem(TOKEN_TIME_KEY);
-        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      } catch (e) {
-        // ignore
-      }
-    }
-  }
-};
-
-export const getAccessToken = (): string | null => {
-  if (cachedAccessToken) return cachedAccessToken;
-
-  if (typeof window !== 'undefined') {
-    try {
-      const storedTime = localStorage.getItem(TOKEN_TIME_KEY);
-      const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY) || sessionStorage.getItem(TOKEN_STORAGE_KEY);
-
-      if (storedToken && storedTime) {
-        const age = Date.now() - parseInt(storedTime, 10);
-        if (age < TOKEN_MAX_AGE_MS) {
-          cachedAccessToken = storedToken;
-          return cachedAccessToken;
-        } else {
-          // Token expired, clean it up
-          setAccessToken(null);
-          return null;
-        }
-      } else if (storedToken) {
-        cachedAccessToken = storedToken;
-        return cachedAccessToken;
-      }
-    } catch (e) {
-      return null;
-    }
-  }
-  return null;
-};
+export { getAccessToken, setAccessToken } from './driveToken';
 
 export const loginWithGoogle = async () => {
   try {
