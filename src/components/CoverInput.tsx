@@ -28,7 +28,7 @@ export function CoverInput({ value, onChange, onPendingChange }: Props) {
     } finally { if (request.current === attempt) setBusy(false); }
   };
 
-  return <div className="space-y-3 pt-3 border-t border-stone-300 dark:border-stone-700">
+  return <div className="space-y-3 pt-3 border-t border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-200">
     <label htmlFor="cover-address" className="block text-xs font-semibold">Capa do livro</label>
     <div className="flex flex-wrap gap-2">
       <input id="cover-address" type="url" value={address} disabled={busy}
