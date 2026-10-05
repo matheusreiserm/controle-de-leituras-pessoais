@@ -30,3 +30,16 @@ test('HTML and oversized downloads are rejected as covers', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => new Response('', { headers: { 'Content-Type': 'image/png', 'Content-Length': '99999999' } }));
   await assert.rejects(fetchCoverBlob('https://example.com/huge.png'), /10 MB/);
 });
+
+test('catalog books with a degraded embedded copy go back to the full-size file', async () => {
+  const { restoreCatalogCovers, catalogCoverPath } = await import('../src/utils/covers');
+  assert.equal(catalogCoverPath(7), '/covers/0007.webp');
+  const { books, restored } = restoreCatalogCovers([
+    { id: 7, coverUrl: 'data:image/webp;base64,AA==' },
+    { id: 8, coverUrl: '/covers/0008.webp' },
+    { id: 600, coverUrl: 'data:image/webp;base64,AA==' },
+    { id: 9, coverUrl: 'https://firebasestorage.googleapis.com/x.webp' },
+  ]);
+  assert.equal(restored, 1);
+  assert.deepEqual(books.map((b) => b.coverUrl), ['/covers/0007.webp', '/covers/0008.webp', 'data:image/webp;base64,AA==', 'https://firebasestorage.googleapis.com/x.webp']);
+});

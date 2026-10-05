@@ -6,12 +6,15 @@ import {
   signInWithPopup,
   signOut,
 } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
+
+export const storage = getStorage(app);
 
 export const FIRESTORE_DATABASE_ID = '(default)';
 
