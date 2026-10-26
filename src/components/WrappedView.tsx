@@ -143,7 +143,7 @@ export const WrappedView: React.FC<WrappedViewProps> = ({ books, availableYears 
                   <img
                     src={resolveCoverUrl(b.coverUrl)} key={b.coverUrl}
                     alt={b.title}
-                    className="w-full h-36 object-cover rounded-xl shadow-md group-hover:scale-105 transition-transform"
+                    className="w-full h-36 object-contain shadow-md group-hover:scale-105 transition-transform"
                     referrerPolicy="no-referrer"
                   />
                 ) : (

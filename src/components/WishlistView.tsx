@@ -115,7 +115,7 @@ export const WishlistView: React.FC<WishlistViewProps> = ({
                   <img
                     src={resolveCoverUrl(b.coverUrl)} key={b.coverUrl}
                     alt={b.title}
-                    className="w-10 h-14 object-cover rounded-lg shrink-0 hover:scale-105 transition-transform"
+                    className="w-10 h-auto max-h-16 object-contain rounded shrink-0 hover:scale-105 transition-transform"
                     referrerPolicy="no-referrer"
                   />
                 ) : (

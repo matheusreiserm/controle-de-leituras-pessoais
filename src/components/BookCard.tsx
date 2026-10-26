@@ -1,4 +1,4 @@
-import { resolveCoverUrl } from '../utils/covers';
+import { CoverImage } from './CoverImage';
 import React from 'react';
 import { Book } from '../types';
 import { StarRating } from './StarRating';
@@ -77,31 +77,25 @@ export const BookCard: React.FC<BookCardProps> = ({
         {/* Cover Thumbnail - Clickable */}
         <div
           onClick={handleCoverClick}
-          className="shrink-0 w-20 h-28 rounded-md shadow-inner overflow-hidden border border-stone-300/40 dark:border-stone-700 relative group-hover:scale-102 transition-transform cursor-pointer group/cover"
+          className="shrink-0 w-20 self-start rounded-md shadow-inner overflow-hidden border border-stone-300/40 dark:border-stone-700 relative group-hover:scale-102 transition-transform cursor-pointer group/cover"
           title="Clique para ver a capa destacada em primeiro plano e acessar o fichamento"
         >
-          {book.coverUrl ? (
-            <img
-              src={resolveCoverUrl(book.coverUrl)} key={book.coverUrl}
-              alt={book.title}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                // Fallback on image error
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-            />
-          ) : null}
-          <div
-            className={`w-full h-full bg-gradient-to-br ${coverBg} p-2 flex flex-col justify-between select-none text-left`}
-          >
-            <div className="text-[10px] font-bold uppercase tracking-wider line-clamp-2 leading-tight opacity-90">
-              {book.title}
-            </div>
-            <div>
-              <div className="text-[9px] opacity-80 line-clamp-1 italic">{book.author}</div>
-              <div className="text-[8px] font-mono mt-1 opacity-70">{book.year}</div>
-            </div>
-          </div>
+          <CoverImage
+            src={book.coverUrl}
+            alt={book.title}
+            className="block w-full h-auto"
+            fallback={
+              <div className={`w-full h-28 bg-gradient-to-br ${coverBg} p-2 flex flex-col justify-between select-none text-left`}>
+                <div className="text-[10px] font-bold uppercase tracking-wider line-clamp-2 leading-tight opacity-90">
+                  {book.title}
+                </div>
+                <div>
+                  <div className="text-[9px] opacity-80 line-clamp-1 italic">{book.author}</div>
+                  <div className="text-[8px] font-mono mt-1 opacity-70">{book.year}</div>
+                </div>
+              </div>
+            }
+          />
 
           {/* Hover Overlay Hint */}
           <div className="absolute inset-0 bg-stone-950/50 opacity-0 group-hover/cover:opacity-100 transition-opacity flex items-center justify-center text-amber-300">
