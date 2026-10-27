@@ -114,7 +114,7 @@ export const NationalityMatrixView: React.FC<NationalityMatrixViewProps> = ({
               onClick={() => setSortBy('volume')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
                 sortBy === 'volume'
-                  ? 'bg-amber-500 text-stone-950'
+                  ? 'bg-amber-500 text-on-accent'
                   : 'text-stone-400 hover:text-stone-200'
               }`}
             >
@@ -124,7 +124,7 @@ export const NationalityMatrixView: React.FC<NationalityMatrixViewProps> = ({
               onClick={() => setSortBy('authors')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
                 sortBy === 'authors'
-                  ? 'bg-amber-500 text-stone-950'
+                  ? 'bg-amber-500 text-on-accent'
                   : 'text-stone-400 hover:text-stone-200'
               }`}
             >
@@ -134,7 +134,7 @@ export const NationalityMatrixView: React.FC<NationalityMatrixViewProps> = ({
               onClick={() => setSortBy('ratio')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
                 sortBy === 'ratio'
-                  ? 'bg-amber-500 text-stone-950'
+                  ? 'bg-amber-500 text-on-accent'
                   : 'text-stone-400 hover:text-stone-200'
               }`}
             >
@@ -190,7 +190,7 @@ export const NationalityMatrixView: React.FC<NationalityMatrixViewProps> = ({
                 >
                   <span className={`w-2 h-2 rounded-full ${colors.solidBg}`}></span>
                   <span>{tab.label}</span>
-                  <span className="ml-0.5 px-1.5 py-0.2 text-[10px] bg-black/30 rounded font-mono font-bold">
+                  <span className="ml-0.5 px-1.5 py-0.2 text-[10px] bg-scrim/30 rounded font-mono font-bold">
                     {count}
                   </span>
                 </button>
@@ -280,7 +280,7 @@ export const NationalityMatrixView: React.FC<NationalityMatrixViewProps> = ({
                             e.stopPropagation();
                             setExpandedCountry(isExpanded ? null : cs.country);
                           }}
-                          className="p-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-500 hover:text-stone-950 transition-colors"
+                          className="p-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-amber-500 hover:text-on-accent transition-colors"
                         >
                           {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                         </button>

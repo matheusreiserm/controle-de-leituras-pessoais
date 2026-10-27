@@ -1,1 +1,180 @@
 @import "tailwindcss";
+
+/*
+ * O desenho do app é escuro: as classes dark: valem sempre (html.dark).
+ * O tema claro não reescreve componentes; troca a paleta quando
+ * html[data-theme="light"]: fundos viram papel creme, textos viram tinta
+ * quente e os acentos ficam em tons pastel.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+@theme {
+  /* Texto sobre botões e selos de destaque (âmbar, verde...). */
+  --color-on-accent: oklch(14.7% 0.004 49.25);
+  /* Véu atrás dos modais. */
+  --color-scrim: #000;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --color-on-accent: oklch(27% 0.02 55);
+  --color-scrim: oklch(68% 0.02 70);
+  /* Texto "mais claro possível" no escuro = tinta mais escura no claro. */
+  --color-white: oklch(25% 0.016 55);
+  --color-amber-50: oklch(31% 0.055 70.1);
+  --color-amber-100: oklch(34% 0.060 70.1);
+  --color-amber-200: oklch(39% 0.070 70.1);
+  --color-amber-300: oklch(48% 0.095 70.1);
+  --color-amber-400: oklch(53% 0.100 70.1);
+  --color-amber-500: oklch(77% 0.085 70.1);
+  --color-amber-600: oklch(71% 0.090 70.1);
+  --color-amber-700: oklch(82% 0.060 70.1);
+  --color-amber-800: oklch(88% 0.045 70.1);
+  --color-amber-900: oklch(92% 0.035 70.1);
+  --color-amber-950: oklch(94% 0.026 70.1);
+  --color-blue-50: oklch(31% 0.055 259.8);
+  --color-blue-100: oklch(34% 0.060 259.8);
+  --color-blue-200: oklch(39% 0.070 259.8);
+  --color-blue-300: oklch(48% 0.095 259.8);
+  --color-blue-400: oklch(53% 0.100 259.8);
+  --color-blue-500: oklch(77% 0.085 259.8);
+  --color-blue-600: oklch(71% 0.090 259.8);
+  --color-blue-700: oklch(82% 0.060 259.8);
+  --color-blue-800: oklch(88% 0.045 259.8);
+  --color-blue-900: oklch(92% 0.035 259.8);
+  --color-blue-950: oklch(94% 0.026 259.8);
+  --color-cyan-50: oklch(31% 0.055 215.2);
+  --color-cyan-100: oklch(34% 0.060 215.2);
+  --color-cyan-200: oklch(39% 0.070 215.2);
+  --color-cyan-300: oklch(48% 0.095 215.2);
+  --color-cyan-400: oklch(53% 0.100 215.2);
+  --color-cyan-500: oklch(77% 0.085 215.2);
+  --color-cyan-600: oklch(71% 0.090 215.2);
+  --color-cyan-700: oklch(82% 0.060 215.2);
+  --color-cyan-800: oklch(88% 0.045 215.2);
+  --color-cyan-900: oklch(92% 0.035 215.2);
+  --color-cyan-950: oklch(94% 0.026 215.2);
+  --color-emerald-50: oklch(31% 0.055 162.5);
+  --color-emerald-100: oklch(34% 0.060 162.5);
+  --color-emerald-200: oklch(39% 0.070 162.5);
+  --color-emerald-300: oklch(48% 0.095 162.5);
+  --color-emerald-400: oklch(53% 0.100 162.5);
+  --color-emerald-500: oklch(77% 0.085 162.5);
+  --color-emerald-600: oklch(71% 0.090 162.5);
+  --color-emerald-700: oklch(82% 0.060 162.5);
+  --color-emerald-800: oklch(88% 0.045 162.5);
+  --color-emerald-900: oklch(92% 0.035 162.5);
+  --color-emerald-950: oklch(94% 0.026 162.5);
+  --color-indigo-50: oklch(31% 0.055 277.1);
+  --color-indigo-100: oklch(34% 0.060 277.1);
+  --color-indigo-200: oklch(39% 0.070 277.1);
+  --color-indigo-300: oklch(48% 0.095 277.1);
+  --color-indigo-400: oklch(53% 0.100 277.1);
+  --color-indigo-500: oklch(77% 0.085 277.1);
+  --color-indigo-600: oklch(71% 0.090 277.1);
+  --color-indigo-700: oklch(82% 0.060 277.1);
+  --color-indigo-800: oklch(88% 0.045 277.1);
+  --color-indigo-900: oklch(92% 0.035 277.1);
+  --color-indigo-950: oklch(94% 0.026 277.1);
+  --color-purple-50: oklch(31% 0.055 303.9);
+  --color-purple-100: oklch(34% 0.060 303.9);
+  --color-purple-200: oklch(39% 0.070 303.9);
+  --color-purple-300: oklch(48% 0.095 303.9);
+  --color-purple-400: oklch(53% 0.100 303.9);
+  --color-purple-500: oklch(77% 0.085 303.9);
+  --color-purple-600: oklch(71% 0.090 303.9);
+  --color-purple-700: oklch(82% 0.060 303.9);
+  --color-purple-800: oklch(88% 0.045 303.9);
+  --color-purple-900: oklch(92% 0.035 303.9);
+  --color-purple-950: oklch(94% 0.026 303.9);
+  --color-red-50: oklch(31% 0.055 25.3);
+  --color-red-100: oklch(34% 0.060 25.3);
+  --color-red-200: oklch(39% 0.070 25.3);
+  --color-red-300: oklch(48% 0.095 25.3);
+  --color-red-400: oklch(53% 0.100 25.3);
+  --color-red-500: oklch(77% 0.085 25.3);
+  --color-red-600: oklch(71% 0.090 25.3);
+  --color-red-700: oklch(82% 0.060 25.3);
+  --color-red-800: oklch(88% 0.045 25.3);
+  --color-red-900: oklch(92% 0.035 25.3);
+  --color-red-950: oklch(94% 0.026 25.3);
+  --color-rose-50: oklch(31% 0.055 16.4);
+  --color-rose-100: oklch(34% 0.060 16.4);
+  --color-rose-200: oklch(39% 0.070 16.4);
+  --color-rose-300: oklch(48% 0.095 16.4);
+  --color-rose-400: oklch(53% 0.100 16.4);
+  --color-rose-500: oklch(77% 0.085 16.4);
+  --color-rose-600: oklch(71% 0.090 16.4);
+  --color-rose-700: oklch(82% 0.060 16.4);
+  --color-rose-800: oklch(88% 0.045 16.4);
+  --color-rose-900: oklch(92% 0.035 16.4);
+  --color-rose-950: oklch(94% 0.026 16.4);
+  --color-sky-50: oklch(31% 0.055 237.3);
+  --color-sky-100: oklch(34% 0.060 237.3);
+  --color-sky-200: oklch(39% 0.070 237.3);
+  --color-sky-300: oklch(48% 0.095 237.3);
+  --color-sky-400: oklch(53% 0.100 237.3);
+  --color-sky-500: oklch(77% 0.085 237.3);
+  --color-sky-600: oklch(71% 0.090 237.3);
+  --color-sky-700: oklch(82% 0.060 237.3);
+  --color-sky-800: oklch(88% 0.045 237.3);
+  --color-sky-900: oklch(92% 0.035 237.3);
+  --color-sky-950: oklch(94% 0.026 237.3);
+  --color-slate-50: oklch(24% 0.007 257.4);
+  --color-slate-100: oklch(27% 0.011 257.4);
+  --color-slate-200: oklch(31% 0.016 257.4);
+  --color-slate-300: oklch(38% 0.016 257.4);
+  --color-slate-400: oklch(46% 0.016 257.4);
+  --color-slate-500: oklch(53% 0.016 257.4);
+  --color-slate-600: oklch(64% 0.016 257.4);
+  --color-slate-700: oklch(79% 0.017 257.4);
+  --color-slate-800: oklch(87% 0.016 257.4);
+  --color-slate-900: oklch(94.6% 0.012 257.4);
+  --color-slate-950: oklch(91.6% 0.016 257.4);
+  --color-stone-50: oklch(24% 0.014 72.0);
+  --color-stone-100: oklch(27% 0.015 72.0);
+  --color-stone-200: oklch(31% 0.016 72.0);
+  --color-stone-300: oklch(38% 0.016 72.0);
+  --color-stone-400: oklch(46% 0.016 72.0);
+  --color-stone-500: oklch(53% 0.016 72.0);
+  --color-stone-600: oklch(64% 0.016 72.0);
+  --color-stone-700: oklch(79% 0.017 72.0);
+  --color-stone-800: oklch(87% 0.016 72.0);
+  --color-stone-900: oklch(94.6% 0.012 72.0);
+  --color-stone-950: oklch(91.6% 0.016 72.0);
+  --color-teal-50: oklch(31% 0.055 182.5);
+  --color-teal-100: oklch(34% 0.060 182.5);
+  --color-teal-200: oklch(39% 0.070 182.5);
+  --color-teal-300: oklch(48% 0.095 182.5);
+  --color-teal-400: oklch(53% 0.100 182.5);
+  --color-teal-500: oklch(77% 0.085 182.5);
+  --color-teal-600: oklch(71% 0.090 182.5);
+  --color-teal-700: oklch(82% 0.060 182.5);
+  --color-teal-800: oklch(88% 0.045 182.5);
+  --color-teal-900: oklch(92% 0.035 182.5);
+  --color-teal-950: oklch(94% 0.026 182.5);
+  --color-zinc-100: oklch(27% 0.005 285.9);
+  --color-zinc-200: oklch(31% 0.008 285.9);
+  --color-zinc-300: oklch(38% 0.010 285.9);
+  --color-zinc-400: oklch(46% 0.016 285.9);
+  --color-zinc-500: oklch(53% 0.016 285.9);
+  --color-zinc-600: oklch(64% 0.016 285.9);
+  --color-zinc-700: oklch(79% 0.017 285.9);
+  --color-zinc-800: oklch(87% 0.010 285.9);
+  --color-zinc-900: oklch(94.6% 0.010 285.9);
+  --color-zinc-950: oklch(91.6% 0.009 285.9);
+}
+
+/* No claro, acentos usados como texto (500) ficam no tom legível (400). */
+[data-theme="light"] :is(.text-amber-500, .hover\:text-amber-500:hover) { color: var(--color-amber-400); }
+[data-theme="light"] :is(.text-rose-500, .hover\:text-rose-500:hover) { color: var(--color-rose-400); }
+[data-theme="light"] .text-emerald-500 { color: var(--color-emerald-400); }
+[data-theme="light"] .text-indigo-500 { color: var(--color-indigo-400); }
+
+/* Estrelas (só elas usam fill-amber-400): dourado mel no claro, em vez do ocre dos textos. */
+[data-theme="light"] .fill-amber-400 { fill: oklch(82% 0.11 84); color: oklch(70% 0.11 76); }

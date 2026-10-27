@@ -407,7 +407,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
             <button
               onClick={handleStartMigration}
               disabled={isRunning}
-              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-on-accent text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isRunning ? (
                 <>

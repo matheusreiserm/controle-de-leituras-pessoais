@@ -32,7 +32,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ currentUser }) => {
       <div className="relative z-10 max-w-md w-full bg-stone-900 border border-stone-800 rounded-3xl p-8 shadow-2xl space-y-6 text-center">
         {/* App Logo Header */}
         <div className="flex flex-col items-center space-y-3">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-stone-950 shadow-lg shadow-amber-500/20">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 light:from-amber-500 light:to-amber-700 flex items-center justify-center text-on-accent shadow-lg shadow-amber-500/20">
             <BookOpen size={32} />
           </div>
           <div>
@@ -78,7 +78,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ currentUser }) => {
             <button
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="w-full py-3 px-5 bg-white hover:bg-stone-100 text-stone-900 text-sm font-bold rounded-2xl transition-all shadow-md flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 group hover:shadow-lg hover:shadow-white/10"
+              className="w-full py-3 px-5 bg-white hover:bg-stone-100 text-stone-900 light:bg-stone-950 light:hover:bg-stone-800 light:text-stone-100 light:border light:border-stone-800 text-sm font-bold rounded-2xl transition-all shadow-md flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 group hover:shadow-lg hover:shadow-white/10"
             >
               <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
                 <path

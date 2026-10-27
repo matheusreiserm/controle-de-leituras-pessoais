@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { fetchCoverBlob, imageToCover, resolveCoverUrl } from '../utils/covers';
+import { fetchCoverBlob, imageToCover, imageToCoverBlob, resolveCoverUrl } from '../utils/covers';
+import { uploadCover } from '../lib/coverStorage';
 
 interface Props {
   value: string;
@@ -20,9 +21,18 @@ export function CoverInput({ value, onChange, onPendingChange }: Props) {
     setBusy(true); setError('');
     try {
       const blob = typeof source === 'string' ? await fetchCoverBlob(source) : source;
-      const cover = await imageToCover(blob);
+      let cover: string;
+      let notice = '';
+      try {
+        cover = await uploadCover(await imageToCoverBlob(blob));
+      } catch (uploadError) {
+        // Storage unavailable (not enabled yet, offline, signed out): keep the old embedded path so the cover is not lost.
+        console.warn('Cover upload failed, embedding instead:', uploadError);
+        cover = await imageToCover(blob);
+        notice = 'Não foi possível enviar a capa em alta resolução; ela foi salva em tamanho reduzido junto com o livro.';
+      }
       if (request.current !== attempt) return;
-      onChange(cover); setAddress('');
+      onChange(cover); setAddress(''); setError(notice);
     } catch (err) {
       if (request.current === attempt) setError(err instanceof Error ? err.message : 'Não foi possível preparar a capa.');
     } finally { if (request.current === attempt) setBusy(false); }
@@ -44,13 +54,13 @@ export function CoverInput({ value, onChange, onPendingChange }: Props) {
         className="block w-full text-xs"
         onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void prepare(file); }} />
     </label>
-    {busy && <p role="status" className="text-xs text-amber-600">Preparando a imagem da capa…</p>}
+    {busy && <p role="status" className="text-xs text-amber-600">Enviando a capa…</p>}
     {error && <p role="alert" className="text-xs text-rose-500">{error}</p>}
     {!!address.trim() && !busy && <p className="text-xs text-amber-600">Use a imagem da URL ou apague o endereço antes de salvar o livro.</p>}
     {value && <div className="flex items-center gap-3">
       <img key={value} src={resolveCoverUrl(value)} alt="Prévia da capa" className="w-16 h-24 object-contain rounded" />
       <div className="space-y-2 text-xs">
-        <p>{value.startsWith('data:') ? 'Imagem incorporada. Será salva com o livro e incluída no backup.' : /^\/?covers\//.test(value) ? 'Capa do catálogo, incluída no site.' : 'Capa antiga por link. Cole a URL acima para incorporar a imagem.'}</p>
+        <p>{value.startsWith('data:') ? 'Imagem reduzida, incorporada ao livro e incluída no backup.' : /^https:\/\/firebasestorage\.googleapis\.com\//.test(value) ? 'Capa em alta resolução, guardada no Firebase Storage.' : /^\/?covers\//.test(value) ? 'Capa do catálogo, incluída no site.' : 'Capa antiga por link. Cole a URL acima para incorporar a imagem.'}</p>
         <button type="button" disabled={busy} onClick={() => { onChange(''); setAddress(''); setError(''); }} className="text-rose-500 underline">Remover capa</button>
       </div>
     </div>}

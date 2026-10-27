@@ -1,5 +1,9 @@
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024;
 const MAX_COVER_CHARACTERS = 260_000;
+/** Same geometry as the catalog covers in public/covers (about 900x1400). */
+const STORED_MAX_WIDTH = 900;
+const STORED_MAX_HEIGHT = 1400;
+export const CATALOG_SIZE = 551;
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
 export function resolveCoverUrl(value?: string, base = (import.meta as any).env?.BASE_URL || '/'): string {
@@ -72,5 +76,46 @@ export async function imageToCover(blob: Blob): Promise<string> {
       }
     }
     throw new Error('A imagem ainda ficou muito grande. Escolha uma capa menor.');
+  } finally { URL.revokeObjectURL(objectUrl); }
+}
+
+export function catalogCoverPath(id: number): string {
+  return `/covers/${String(id).padStart(4, '0')}.webp`;
+}
+
+/** Catalog books whose good-quality file ships with the site but whose stored cover was replaced by a degraded embedded copy. */
+export function restoreCatalogCovers<T extends { id: number; coverUrl?: string }>(books: T[]): { books: T[]; restored: number } {
+  let restored = 0;
+  const next = books.map((book) => {
+    if (book.id >= 1 && book.id <= CATALOG_SIZE && book.coverUrl?.startsWith('data:')) {
+      restored++;
+      return { ...book, coverUrl: catalogCoverPath(book.id) };
+    }
+    return book;
+  });
+  return { books: next, restored };
+}
+
+/** Full-quality cover for file storage: no 260k-character budget, same size as the catalog covers. */
+export async function imageToCoverBlob(blob: Blob): Promise<Blob> {
+  validateSource(blob);
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    try { await image.decode(); } catch { throw new Error('Não foi possível ler a imagem. Envie outro arquivo JPG, PNG ou WEBP.'); }
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error('A imagem não tem dimensões válidas.');
+    const scale = Math.min(1, STORED_MAX_WIDTH / image.naturalWidth, STORED_MAX_HEIGHT / image.naturalHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Este navegador não conseguiu preparar a capa.');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const encoded = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', 0.9));
+    if (!encoded || encoded.type !== 'image/webp') throw new Error('Este navegador não conseguiu gerar a capa em WEBP.');
+    return encoded;
   } finally { URL.revokeObjectURL(objectUrl); }
 }

@@ -180,7 +180,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ books, onNavigateT
 
           <button
             onClick={onNavigateToMatrix}
-            className="self-start md:self-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
+            className="self-start md:self-auto px-4 py-2 bg-amber-500 hover:bg-amber-400 text-on-accent font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-2 shrink-0 cursor-pointer"
           >
             <Sparkles size={14} />
             <span>Ver Matriz Completa</span>

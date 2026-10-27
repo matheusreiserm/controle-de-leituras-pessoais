@@ -1,5 +1,5 @@
 import { CoverInput } from './CoverInput';
-import { resolveCoverUrl } from '../utils/covers';
+import { CoverImage } from './CoverImage';
 import React, { useState } from 'react';
 import { Book, FormatType, LanguageType, MonthName } from '../types';
 import { MONTHS_LIST, getCountryContinent, getCoverGradient, getContinentColors } from '../utils/helpers';
@@ -168,7 +168,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
         {/* Discreet '+' Button */}
         <button
           onClick={handleOpenAdd}
-          className="p-2.5 bg-stone-800 hover:bg-amber-500 hover:text-stone-950 text-amber-400 border border-stone-700 hover:border-amber-400 rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5 text-xs font-semibold group"
+          className="p-2.5 bg-stone-800 hover:bg-amber-500 hover:text-on-accent text-amber-400 border border-stone-700 hover:border-amber-400 rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5 text-xs font-semibold group"
           title="Adicionar leitura em andamento"
         >
           <Plus size={16} className="transition-transform group-hover:scale-110" />
@@ -188,7 +188,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
           </p>
           <button
             onClick={handleOpenAdd}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm mt-2"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-on-accent font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm mt-2"
           >
             <Plus size={14} /> Adicionar Leitura
           </button>
@@ -223,30 +223,25 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                   {/* Cover Thumbnail - Clickable */}
                   <div
                     onClick={() => onOpenCover(book)}
-                    className="shrink-0 w-20 h-28 rounded-md shadow-inner overflow-hidden border border-stone-300/40 dark:border-stone-700 relative group-hover:scale-102 transition-transform cursor-pointer group/cover"
+                    className="shrink-0 w-20 self-start rounded-md shadow-inner overflow-hidden border border-stone-300/40 dark:border-stone-700 relative group-hover:scale-102 transition-transform cursor-pointer group/cover"
                     title="Clique para ver a capa destacada ou abrir o fichamento"
                   >
-                    {book.coverUrl ? (
-                      <img
-                        src={resolveCoverUrl(book.coverUrl)} key={book.coverUrl}
-                        alt={book.title}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                    ) : null}
-                    <div
-                      className={`w-full h-full bg-gradient-to-br ${coverBg} p-2 flex flex-col justify-between select-none text-left`}
-                    >
-                      <div className="text-[10px] font-bold uppercase tracking-wider line-clamp-2 leading-tight opacity-90">
-                        {book.title}
-                      </div>
-                      <div>
-                        <div className="text-[9px] opacity-80 line-clamp-1 italic">{book.author}</div>
-                        <div className="text-[8px] font-mono mt-1 opacity-70">{book.year}</div>
-                      </div>
-                    </div>
+                    <CoverImage
+                      src={book.coverUrl}
+                      alt={book.title}
+                      className="block w-full h-auto"
+                      fallback={
+                        <div className={`w-full h-28 bg-gradient-to-br ${coverBg} p-2 flex flex-col justify-between select-none text-left`}>
+                          <div className="text-[10px] font-bold uppercase tracking-wider line-clamp-2 leading-tight opacity-90">
+                            {book.title}
+                          </div>
+                          <div>
+                            <div className="text-[9px] opacity-80 line-clamp-1 italic">{book.author}</div>
+                            <div className="text-[8px] font-mono mt-1 opacity-70">{book.year}</div>
+                          </div>
+                        </div>
+                      }
+                    />
 
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-stone-950/50 opacity-0 group-hover/cover:opacity-100 transition-opacity flex items-center justify-center text-amber-300">
@@ -312,7 +307,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                     >
                       <FileText size={14} />
                       {fichamentoCount > 0 && (
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 text-[8px] text-stone-950 font-bold flex items-center justify-center">
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 text-[8px] text-on-accent font-bold flex items-center justify-center">
                           {fichamentoCount}
                         </span>
                       )}
@@ -339,7 +334,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                     {/* Discreet 'Concluir Leitura' Button */}
                     <button
                       onClick={() => handleStartComplete(book)}
-                      className="ml-1 px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-stone-950 border border-emerald-500/30 hover:border-emerald-400 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                      className="ml-1 px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-on-accent border border-emerald-500/30 hover:border-emerald-400 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
                       title="Concluir leitura e enviar para o Diário Mensal"
                     >
                       <CheckCircle2 size={13} />
@@ -485,7 +480,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                 <button
                   type="submit"
                   disabled={saving || coverPending}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-on-accent text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
                 >
                   Iniciar Leitura
                 </button>
@@ -599,7 +594,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmComplete}
-                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-stone-950 text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-on-accent text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <CheckCircle2 size={15} />
                 <span>Concluir e Salvar no Diário</span>

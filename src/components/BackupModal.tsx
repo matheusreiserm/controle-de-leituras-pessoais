@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Book } from '../types';
 import { exportToGoogleDrive, importFromGoogleDrive } from '../lib/driveSync';
+import { restoreCatalogCovers } from '../utils/covers';
 import { validateBackupPayload, createBackupPayload } from '../utils/backupValidation';
 import {
   Cloud,
@@ -29,7 +30,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   books,
   onRestoreBooks,
 }) => {
-  const [loadingAction, setLoadingAction] = useState<'export' | 'import' | 'file-import' | null>(null);
+  const [loadingAction, setLoadingAction] = useState<'export' | 'import' | 'file-import' | 'covers' | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string; details?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,6 +104,25 @@ export const BackupModal: React.FC<BackupModalProps> = ({
         type: 'error',
         text: err?.message || 'Falha ao importar backup do Google Drive.',
       });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleRestoreCatalogCovers = async () => {
+    const { books: restoredBooks, restored } = restoreCatalogCovers(books);
+    if (!restored) {
+      setFeedback({ type: 'success', text: 'Todas as capas do catálogo já usam os arquivos em alta resolução.' });
+      return;
+    }
+    if (!window.confirm(`${restored} livros do catálogo estão com uma cópia reduzida da capa. Trocar pelas imagens em alta resolução do site?`)) return;
+    setLoadingAction('covers');
+    setFeedback(null);
+    try {
+      await onRestoreBooks(restoredBooks);
+      setFeedback({ type: 'success', text: `${restored} capas do catálogo restauradas em alta resolução.` });
+    } catch (err: any) {
+      setFeedback({ type: 'error', text: err?.message || 'Falha ao restaurar as capas do catálogo.' });
     } finally {
       setLoadingAction(null);
     }
@@ -197,7 +217,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -253,7 +273,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 disabled={loadingAction !== null}
                 className="flex flex-col items-center justify-center gap-2 p-4 bg-stone-950/80 hover:bg-amber-500/10 border border-stone-800 hover:border-amber-500/50 rounded-xl transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
               >
-                <div className="p-2.5 bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-stone-950 rounded-full transition-all">
+                <div className="p-2.5 bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-on-accent rounded-full transition-all">
                   {loadingAction === 'export' ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
@@ -273,7 +293,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 disabled={loadingAction !== null}
                 className="flex flex-col items-center justify-center gap-2 p-4 bg-stone-950/80 hover:bg-sky-500/10 border border-stone-800 hover:border-sky-500/50 rounded-xl transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
               >
-                <div className="p-2.5 bg-sky-500/10 text-sky-400 group-hover:bg-sky-500 group-hover:text-stone-950 rounded-full transition-all">
+                <div className="p-2.5 bg-sky-500/10 text-sky-400 group-hover:bg-sky-500 group-hover:text-on-accent rounded-full transition-all">
                   {loadingAction === 'import' ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
@@ -317,6 +337,18 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 <div>
                   <span className="block text-xs font-medium text-stone-200">Restaurar de JSON</span>
                   <span className="text-[10px] text-stone-500">Carregar arquivo validado</span>
+                </div>
+              </button>
+
+              <button
+                onClick={handleRestoreCatalogCovers}
+                disabled={loadingAction !== null}
+                className="flex items-center gap-2.5 p-3 bg-stone-950/60 hover:bg-stone-800 border border-stone-800 rounded-xl transition-all text-left cursor-pointer disabled:opacity-50 sm:col-span-2"
+              >
+                {loadingAction === 'covers' ? <Loader2 size={16} className="animate-spin text-emerald-400 shrink-0" /> : <ShieldCheck size={16} className="text-emerald-400 shrink-0" />}
+                <div>
+                  <span className="block text-xs font-medium text-stone-200">Restaurar capas do catálogo</span>
+                  <span className="text-[10px] text-stone-500">Volta às imagens em alta resolução do site</span>
                 </div>
               </button>
 

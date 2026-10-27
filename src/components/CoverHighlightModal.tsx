@@ -1,4 +1,4 @@
-import { resolveCoverUrl } from '../utils/covers';
+import { CoverImage } from './CoverImage';
 import React from 'react';
 import { Book } from '../types';
 import { StarRating } from './StarRating';
@@ -71,29 +71,24 @@ export const CoverHighlightModal: React.FC<CoverHighlightModalProps> = ({
         </button>
 
         {/* Cover Column (Highlighted in foreground) */}
-        <div className="md:w-64 bg-stone-950/90 p-6 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-stone-800 shrink-0">
-          <div className="relative group w-44 h-64 rounded-lg overflow-hidden shadow-2xl border border-stone-700/60 transition-transform duration-300 hover:scale-105">
-            {book.coverUrl ? (
-              <img
-                src={resolveCoverUrl(book.coverUrl)} key={book.coverUrl}
-                alt={book.title}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
-            ) : null}
-            <div
-              className={`w-full h-full bg-gradient-to-br ${coverBg} p-4 flex flex-col justify-between text-left select-none`}
-            >
-              <div className="text-xs font-bold uppercase tracking-wider line-clamp-3 leading-snug">
-                {book.title}
-              </div>
-              <div>
-                <div className="text-xs opacity-85 line-clamp-1 italic">{book.author}</div>
-                <div className="text-[10px] font-mono mt-1 opacity-70">{book.year}</div>
-              </div>
-            </div>
+        <div className="md:w-72 bg-stone-950/90 p-6 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-stone-800 shrink-0">
+          <div className="relative group w-56 max-w-full rounded-lg overflow-hidden shadow-2xl border border-stone-700/60 transition-transform duration-300 hover:scale-105">
+            <CoverImage
+              src={book.coverUrl}
+              alt={book.title}
+              className="block w-full h-auto"
+              fallback={
+                <div className={`w-full h-80 bg-gradient-to-br ${coverBg} p-4 flex flex-col justify-between text-left select-none`}>
+                  <div className="text-xs font-bold uppercase tracking-wider line-clamp-3 leading-snug">
+                    {book.title}
+                  </div>
+                  <div>
+                    <div className="text-xs opacity-85 line-clamp-1 italic">{book.author}</div>
+                    <div className="text-[10px] font-mono mt-1 opacity-70">{book.year}</div>
+                  </div>
+                </div>
+              }
+            />
           </div>
 
           {/* Diminutive Fichamento Button under Cover */}
@@ -110,7 +105,7 @@ export const CoverHighlightModal: React.FC<CoverHighlightModalProps> = ({
               <FileText size={14} className="text-amber-400 group-hover:scale-110 transition-transform" />
               <span>Fichamento</span>
               {fichamentoCount > 0 && (
-                <span className="ml-0.5 px-1.5 py-0.2 text-[10px] bg-amber-400 text-stone-950 rounded-full font-mono font-bold">
+                <span className="ml-0.5 px-1.5 py-0.2 text-[10px] bg-amber-400 text-on-accent rounded-full font-mono font-bold">
                   {fichamentoCount}
                 </span>
               )}
