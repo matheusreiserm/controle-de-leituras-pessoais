@@ -49,7 +49,7 @@ export const WishlistView: React.FC<WishlistViewProps> = ({
 
         <button
           onClick={() => setShowAdd((prev) => !prev)}
-          className="py-2 px-4 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
+          className="py-2 px-4 bg-amber-500 hover:bg-amber-400 text-on-accent font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
         >
           <Plus size={16} /> Adicionar
         </button>
@@ -85,7 +85,7 @@ export const WishlistView: React.FC<WishlistViewProps> = ({
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold rounded-xl cursor-pointer"
+              className="px-4 py-1.5 bg-amber-500 hover:bg-amber-400 text-on-accent text-xs font-bold rounded-xl cursor-pointer"
             >
               Salvar na Lista
             </button>
@@ -132,7 +132,7 @@ export const WishlistView: React.FC<WishlistViewProps> = ({
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => onMarkAsRead(b)}
-                  className="p-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-stone-950 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
+                  className="p-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-on-accent text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1"
                   title="Marcar como Lido"
                 >
                   <CheckCircle2 size={16} />

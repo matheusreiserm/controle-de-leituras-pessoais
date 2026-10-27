@@ -217,7 +217,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="bg-stone-900 border border-stone-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -273,7 +273,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 disabled={loadingAction !== null}
                 className="flex flex-col items-center justify-center gap-2 p-4 bg-stone-950/80 hover:bg-amber-500/10 border border-stone-800 hover:border-amber-500/50 rounded-xl transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
               >
-                <div className="p-2.5 bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-stone-950 rounded-full transition-all">
+                <div className="p-2.5 bg-amber-500/10 text-amber-400 group-hover:bg-amber-500 group-hover:text-on-accent rounded-full transition-all">
                   {loadingAction === 'export' ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
@@ -293,7 +293,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 disabled={loadingAction !== null}
                 className="flex flex-col items-center justify-center gap-2 p-4 bg-stone-950/80 hover:bg-sky-500/10 border border-stone-800 hover:border-sky-500/50 rounded-xl transition-all group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
               >
-                <div className="p-2.5 bg-sky-500/10 text-sky-400 group-hover:bg-sky-500 group-hover:text-stone-950 rounded-full transition-all">
+                <div className="p-2.5 bg-sky-500/10 text-sky-400 group-hover:bg-sky-500 group-hover:text-on-accent rounded-full transition-all">
                   {loadingAction === 'import' ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (

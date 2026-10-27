@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Book, FichamentoData, FichamentoItem } from '../types';
-import { X, Plus, Trash2, FileText, Copy, Check, BookOpen, Pencil, Undo2, CheckCircle2, type LucideIcon } from 'lucide-react';
+import { X, Plus, Trash2, FileText, Copy, Check, BookOpen, Pencil, Undo2, type LucideIcon } from 'lucide-react';
 import {
-  FichamentoItemStatus,
   createEmptyItem,
   formatFichamentoText,
   hasContent,
@@ -25,13 +24,12 @@ function getDefaultReference(b: Book): string {
   return `${authorUpper}. ${b.title}. ${b.year || ''}. (${b.pages || 0} pág.)`;
 }
 
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-
 interface AutoGrowTextareaProps {
   value: string;
   onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => void;
   placeholder?: string;
   className?: string;
+  'aria-label'?: string;
   focusOnMount?: boolean;
 }
 
@@ -73,28 +71,10 @@ function AutoGrowTextarea({ focusOnMount, className = '', value, ...props }: Aut
   return <textarea ref={ref} rows={3} value={value} {...props} className={`resize-none overflow-hidden ${className}`} />;
 }
 
-const PILL = 'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider';
-
-function StatusBadge({ status, editing }: { status: FichamentoItemStatus; editing: boolean }) {
-  if (status === 'published') {
-    return editing ? (
-      <span className={`${PILL} border-sky-500/30 bg-sky-500/10 text-sky-300`}>Editando</span>
-    ) : (
-      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-400/80">
-        <CheckCircle2 size={11} /> Publicada
-      </span>
-    );
-  }
-  if (status === 'edited') return <span className={`${PILL} border-sky-500/30 bg-sky-500/10 text-sky-300`}>Editada · não publicada</span>;
-  if (status === 'new') return <span className={`${PILL} border-amber-500/40 bg-amber-500/10 text-amber-300`}>Nova · não publicada</span>;
-  return <span className={`${PILL} border-rose-500/30 bg-rose-500/10 text-rose-300`}>Removida · sai ao publicar</span>;
-}
-
-function ItemAction({ icon: Icon, label, title, tone = 'default', onClick }: {
+function IconAction({ icon: Icon, title, danger = false, onClick }: {
   icon: LucideIcon;
-  label?: string;
   title: string;
-  tone?: 'default' | 'rose';
+  danger?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -102,13 +82,12 @@ function ItemAction({ icon: Icon, label, title, tone = 'default', onClick }: {
       type="button"
       onClick={onClick}
       title={title}
-      aria-label={label ? undefined : title}
-      className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
-        tone === 'rose' ? 'text-stone-500 hover:text-rose-400 hover:bg-rose-500/10' : 'text-stone-400 hover:text-amber-300 hover:bg-stone-800'
+      aria-label={title}
+      className={`rounded-md p-1.5 text-stone-600 transition-colors cursor-pointer ${
+        danger ? 'hover:text-rose-400 hover:bg-rose-500/10' : 'hover:text-amber-300 hover:bg-stone-800'
       }`}
     >
-      <Icon size={13} />
-      {label && <span>{label}</span>}
+      <Icon size={14} />
     </button>
   );
 }
@@ -122,9 +101,10 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   const [reference, setReference] = useState('');
   const [publishedReference, setPublishedReference] = useState('');
   const [items, setItems] = useState<FichamentoItem[]>([]);
-  // Snapshot of what is saved; every difference from it is shown as "não publicada".
+  // Snapshot of what is saved; anything that differs from it is waiting to be published.
   const [published, setPublished] = useState<Map<string, FichamentoItem>>(() => new Map());
   const [editing, setEditing] = useState<Set<string>>(() => new Set());
+  // Saved quotes deleted in this session: hidden right away, dropped for good on publish.
   const [removed, setRemoved] = useState<Set<string>>(() => new Set());
   const [focusRequest, setFocusRequest] = useState<{ id: string; field: 'page' | 'text' } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -168,15 +148,15 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   useEffect(() => () => window.clearTimeout(publishedTimer.current), []);
 
   const referenceChanged = reference.trim() !== publishedReference.trim();
-  const summary = useMemo(
-    () => summarize(items, published, removed, referenceChanged),
+  const pending = useMemo(
+    () => summarize(items, published, removed, referenceChanged).pending,
     [items, published, removed, referenceChanged]
   );
 
   if (!isOpen || !book) return null;
 
-  const pending = summary.pending;
-  const visibleCount = items.filter((item) => !removed.has(item.id) && hasContent(item)).length;
+  const visibleItems = items.filter((item) => !removed.has(item.id));
+  const visibleCount = visibleItems.filter(hasContent).length;
 
   const updateItem = (id: string, field: 'page' | 'text', value: string) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
@@ -210,20 +190,11 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
 
   const removeItem = (id: string) => {
     if (published.has(id)) {
-      // Saved quotes stay listed until publishing, so a removal can still be undone.
       setRemoved((prev) => new Set(prev).add(id));
       finishEditing(id);
     } else {
       setItems((prev) => prev.filter((item) => item.id !== id));
     }
-  };
-
-  const restoreItem = (id: string) => {
-    setRemoved((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
   };
 
   const handlePublish = async () => {
@@ -247,7 +218,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
       setFocusRequest(null);
       setJustPublished(true);
       window.clearTimeout(publishedTimer.current);
-      publishedTimer.current = window.setTimeout(() => setJustPublished(false), 3000);
+      publishedTimer.current = window.setTimeout(() => setJustPublished(false), 2500);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Não foi possível publicar o fichamento.');
     } finally {
@@ -257,16 +228,15 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
 
   const handleClose = () => {
     if (isSaving) return;
-    if (pending && !window.confirm(`Há ${plural(pending, 'alteração não publicada', 'alterações não publicadas')}. Fechar e descartar?`)) return;
+    if (pending && !window.confirm('Há alterações não publicadas. Fechar e descartar?')) return;
     onClose();
   };
 
   shortcuts.current = { close: handleClose, publish: () => void handlePublish() };
 
   const handleCopyFormatted = async () => {
-    const text = formatFichamentoText(book, reference, items.filter((item) => !removed.has(item.id)));
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(formatFichamentoText(book, reference, visibleItems));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -276,54 +246,37 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
 
   const renderItem = (item: FichamentoItem, index: number) => {
     const status = itemStatus(item, published, removed);
-    const number = <span className="font-mono text-[11px] text-stone-500">#{index + 1}</span>;
-
-    if (status === 'removed') {
-      return (
-        <li key={item.id} className="flex items-center gap-3 rounded-xl border border-rose-500/25 bg-rose-500/5 px-4 py-2.5">
-          {number}
-          <StatusBadge status={status} editing={false} />
-          <span className="min-w-0 flex-1 truncate text-xs text-stone-500 line-through">
-            {item.page.trim() && `${pageLabel(item.page)} · `}{item.text}
-          </span>
-          <ItemAction icon={Undo2} label="Desfazer" title="Manter este trecho" onClick={() => restoreItem(item.id)} />
-        </li>
-      );
-    }
+    const edited = status === 'edited';
 
     if (status !== 'new' && !editing.has(item.id)) {
       return (
         <li
           key={item.id}
-          className={`group rounded-xl border p-4 transition-colors ${
-            status === 'edited' ? 'border-sky-500/40 bg-sky-500/[0.04]' : 'border-stone-800/80 bg-stone-950/40 hover:border-stone-700'
+          title={edited ? 'Alterada; publique para salvar' : undefined}
+          className={`group rounded-xl border bg-stone-950/40 px-4 pb-4 pt-2.5 transition-colors ${
+            edited ? 'border-sky-500/40 light:border-sky-400/60' : 'border-stone-800/80 hover:border-stone-700'
           }`}
         >
-          <div className="mb-2.5 flex flex-wrap items-center gap-2">
-            {number}
+          <div className="mb-1.5 flex items-center gap-2">
+            <span className="font-mono text-[11px] text-stone-500">#{index + 1}</span>
             {item.page.trim() && (
               <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-xs font-semibold text-amber-300">
                 {pageLabel(item.page)}
               </span>
             )}
-            <StatusBadge status={status} editing={false} />
-            <div className="ml-auto flex items-center gap-0.5 sm:opacity-60 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity">
-              {status === 'edited' && (
-                <ItemAction icon={Undo2} label="Desfazer" title="Voltar ao texto publicado" onClick={() => revertItem(item.id)} />
-              )}
-              <ItemAction icon={Pencil} label="Editar" title="Editar este trecho (ou clique duas vezes no texto)" onClick={() => startEditing(item.id)} />
-              <ItemAction icon={Trash2} title="Remover este trecho" tone="rose" onClick={() => removeItem(item.id)} />
+            <div className="ml-auto flex items-center">
+              {edited && <IconAction icon={Undo2} title="Desfazer alteração" onClick={() => revertItem(item.id)} />}
+              <IconAction icon={Pencil} title="Editar" onClick={() => startEditing(item.id)} />
+              <IconAction icon={Trash2} title="Apagar" danger onClick={() => removeItem(item.id)} />
             </div>
           </div>
-          {item.text.trim() ? (
+          {item.text.trim() && (
             <blockquote
               onDoubleClick={() => startEditing(item.id)}
               className="border-l-2 border-amber-500/40 pl-4 font-serif text-[15px] leading-relaxed text-stone-200 whitespace-pre-wrap break-words"
             >
               {item.text}
             </blockquote>
-          ) : (
-            <p className="text-xs italic text-stone-500">Sem texto, só a página.</p>
           )}
         </li>
       );
@@ -333,57 +286,51 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
     return (
       <li
         key={item.id}
-        className={`rounded-xl border p-3.5 ${
-          status === 'new' ? 'border-dashed border-amber-500/50 bg-amber-500/[0.04]' : 'border-sky-500/40 bg-sky-500/[0.04]'
+        className={`rounded-xl border p-3 ${
+          status === 'new'
+            ? 'border-dashed border-amber-500/50 light:border-amber-400/60 bg-amber-500/[0.04]'
+            : edited
+              ? 'border-sky-500/40 light:border-sky-400/60 bg-sky-500/[0.04]'
+              : 'border-stone-700 bg-stone-950/40'
         }`}
       >
-        <div className="mb-2.5 flex flex-wrap items-center gap-2">
-          {number}
-          <StatusBadge status={status} editing />
-          <div className="ml-auto flex items-center gap-0.5">
-            {status === 'edited' && (
-              <ItemAction icon={Undo2} label="Desfazer" title="Voltar ao texto publicado" onClick={() => revertItem(item.id)} />
-            )}
-            {status !== 'new' && (
-              <ItemAction icon={Check} label="Concluir" title="Fechar a edição deste trecho" onClick={() => finishEditing(item.id)} />
-            )}
-            <ItemAction
-              icon={Trash2}
-              tone="rose"
-              title={status === 'new' ? 'Descartar este trecho' : 'Remover este trecho'}
-              onClick={() => removeItem(item.id)}
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-          <label className="block shrink-0 sm:w-32">
-            <span className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-stone-500">Página / Local</span>
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-start">
             <input
               type="text"
               value={item.page}
               autoFocus={focusField === 'page'}
               onChange={(e) => updateItem(item.id, 'page', e.target.value)}
-              placeholder="Ex: p. 45"
-              className="w-full rounded-md border border-stone-800 bg-stone-900 px-2.5 py-1.5 font-mono text-xs text-amber-300 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none"
+              placeholder="Página"
+              aria-label="Página ou local"
+              className="w-full rounded-md border border-stone-800 bg-stone-900 px-2.5 py-2 font-mono text-xs text-amber-300 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none sm:w-28"
             />
-          </label>
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block font-mono text-[10px] uppercase tracking-wider text-stone-500">Texto / Anotação / Citação</span>
             <AutoGrowTextarea
               value={item.text}
               focusOnMount={focusField === 'text'}
               onChange={(e) => updateItem(item.id, 'text', e.target.value)}
-              placeholder="Insira o texto da citação ou comentário..."
-              className="w-full rounded-md border border-stone-800 bg-stone-900 px-3 py-2 text-sm leading-relaxed text-stone-200 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none"
+              placeholder="Citação ou anotação"
+              aria-label="Texto da citação ou anotação"
+              className="w-full min-w-0 flex-1 rounded-md border border-stone-800 bg-stone-900 px-3 py-2 text-sm leading-relaxed text-stone-200 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none"
             />
-          </label>
+          </div>
+          <div className="flex shrink-0 flex-col items-center">
+            {status !== 'new' && <IconAction icon={Check} title="Concluir" onClick={() => finishEditing(item.id)} />}
+            {edited && <IconAction icon={Undo2} title="Desfazer alteração" onClick={() => revertItem(item.id)} />}
+            <IconAction
+              icon={Trash2}
+              title={status === 'new' ? 'Descartar' : 'Apagar'}
+              danger
+              onClick={() => removeItem(item.id)}
+            />
+          </div>
         </div>
       </li>
     );
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-scrim/75 backdrop-blur-sm animate-fadeIn">
       <div
         role="dialog"
         aria-modal="true"
@@ -413,7 +360,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
           <button
             onClick={handleClose}
             className="p-1.5 rounded-lg text-stone-400 hover:text-stone-100 hover:bg-stone-800 transition-colors"
-            title="Fechar (Esc)"
+            title="Fechar"
           >
             <X size={18} />
           </button>
@@ -434,7 +381,6 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
                 <label htmlFor="fichamento-reference" className="text-xs font-semibold uppercase tracking-wider text-amber-400/90 flex items-center gap-1.5">
                   <BookOpen size={13} />
                   Cabeçalho de Referência
-                  {referenceChanged && <span className={`${PILL} border-sky-500/30 bg-sky-500/10 text-sky-300`}>Editado</span>}
                 </label>
                 <button
                   type="button"
@@ -456,35 +402,11 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
 
             {/* Lista de Trechos e Citações (Página / Texto) */}
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-400/90">
-                  Anotações e Citações ({visibleCount})
-                </h3>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {summary.published > 0 && (
-                    <span className={`${PILL} border-emerald-500/25 bg-emerald-500/10 text-emerald-300`}>
-                      {plural(summary.published, 'publicada', 'publicadas')}
-                    </span>
-                  )}
-                  {summary.new > 0 && (
-                    <span className={`${PILL} border-amber-500/40 bg-amber-500/10 text-amber-300`}>{plural(summary.new, 'nova', 'novas')}</span>
-                  )}
-                  {summary.edited > 0 && (
-                    <span className={`${PILL} border-sky-500/30 bg-sky-500/10 text-sky-300`}>{plural(summary.edited, 'editada', 'editadas')}</span>
-                  )}
-                  {summary.removed > 0 && (
-                    <span className={`${PILL} border-rose-500/30 bg-rose-500/10 text-rose-300`}>{plural(summary.removed, 'removida', 'removidas')}</span>
-                  )}
-                </div>
-              </div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-400/90">
+                Anotações e Citações ({visibleCount})
+              </h3>
 
-              {items.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-stone-800 px-4 py-6 text-center text-xs text-stone-500">
-                  Nenhum trecho ainda. Adicione a primeira citação abaixo.
-                </p>
-              ) : (
-                <ol className="space-y-3">{items.map(renderItem)}</ol>
-              )}
+              {visibleItems.length > 0 && <ol className="space-y-3">{visibleItems.map(renderItem)}</ol>}
 
               <button
                 type="button"
@@ -510,16 +432,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
             <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
           </button>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <span role="status" className="text-[11px]">
-              {justPublished ? (
-                <span className="inline-flex items-center gap-1 text-emerald-400"><CheckCircle2 size={13} /> Publicado</span>
-              ) : pending ? (
-                <span className="text-amber-400/90">{plural(pending, 'alteração não publicada', 'alterações não publicadas')}</span>
-              ) : (
-                <span className="text-stone-500">Tudo publicado</span>
-              )}
-            </span>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleClose}
@@ -531,10 +444,13 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
               type="button"
               onClick={() => void handlePublish()}
               disabled={isSaving || !pending}
-              title="Publicar as alterações (Ctrl+Enter)"
-              className="px-5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-semibold rounded-lg text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Publicar (Ctrl+Enter)"
+              className={`px-5 py-1.5 bg-amber-500 hover:bg-amber-400 text-on-accent font-semibold rounded-lg text-xs shadow-md transition-all cursor-pointer disabled:cursor-default flex items-center gap-1.5 ${
+                justPublished ? '' : 'disabled:opacity-50'
+              }`}
             >
-              {isSaving ? 'Publicando...' : pending ? `Publicar (${pending})` : 'Publicar'}
+              {justPublished && <Check size={14} />}
+              {isSaving ? 'Publicando...' : justPublished ? 'Publicado' : pending ? `Publicar (${pending})` : 'Publicar'}
             </button>
           </div>
         </div>

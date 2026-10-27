@@ -305,7 +305,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
               </span>
               <button
                 onClick={handleResetFilters}
-                className="px-2.5 py-1 bg-amber-500 text-stone-950 rounded-lg text-xs font-bold hover:bg-amber-400 transition-colors flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1 bg-amber-500 text-on-accent rounded-lg text-xs font-bold hover:bg-amber-400 transition-colors flex items-center gap-1 cursor-pointer"
               >
                 <X size={12} /> Limpar Filtros
               </button>
@@ -325,7 +325,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
             </p>
             <button
               onClick={handleResetFilters}
-              className="px-4 py-2 bg-amber-500 text-stone-950 font-bold rounded-xl text-xs hover:bg-amber-400 transition-colors cursor-pointer"
+              className="px-4 py-2 bg-amber-500 text-on-accent font-bold rounded-xl text-xs hover:bg-amber-400 transition-colors cursor-pointer"
             >
               Restaurar Todos os Filtros
             </button>
@@ -381,7 +381,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
             onClick={() => setSelectedMonth('Todos')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 cursor-pointer ${
               selectedMonth === 'Todos'
-                ? 'bg-amber-500 text-stone-950 font-bold shadow'
+                ? 'bg-amber-500 text-on-accent font-bold shadow'
                 : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
             }`}
           >
@@ -397,7 +397,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
                 onClick={() => setSelectedMonth(m)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
                   isSelected
-                    ? 'bg-amber-500 text-stone-950 font-bold shadow'
+                    ? 'bg-amber-500 text-on-accent font-bold shadow'
                     : count > 0
                     ? 'bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 hover:bg-stone-200 dark:hover:bg-stone-700'
                     : 'bg-stone-50 dark:bg-stone-900/40 text-stone-400 dark:text-stone-600 opacity-60'
@@ -458,7 +458,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
                 {/* Month Section Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b-2 border-amber-500/30">
                   <div className="flex items-center gap-3">
-                    <span className="p-2 bg-amber-500 text-stone-950 font-serif font-bold text-lg rounded-xl shadow">
+                    <span className="p-2 bg-amber-500 text-on-accent font-serif font-bold text-lg rounded-xl shadow">
                       {month.slice(0, 3)}
                     </span>
                     <div>

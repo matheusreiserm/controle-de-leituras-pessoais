@@ -105,7 +105,7 @@ export const CoverHighlightModal: React.FC<CoverHighlightModalProps> = ({
               <FileText size={14} className="text-amber-400 group-hover:scale-110 transition-transform" />
               <span>Fichamento</span>
               {fichamentoCount > 0 && (
-                <span className="ml-0.5 px-1.5 py-0.2 text-[10px] bg-amber-400 text-stone-950 rounded-full font-mono font-bold">
+                <span className="ml-0.5 px-1.5 py-0.2 text-[10px] bg-amber-400 text-on-accent rounded-full font-mono font-bold">
                   {fichamentoCount}
                 </span>
               )}

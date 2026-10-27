@@ -168,7 +168,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
         {/* Discreet '+' Button */}
         <button
           onClick={handleOpenAdd}
-          className="p-2.5 bg-stone-800 hover:bg-amber-500 hover:text-stone-950 text-amber-400 border border-stone-700 hover:border-amber-400 rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5 text-xs font-semibold group"
+          className="p-2.5 bg-stone-800 hover:bg-amber-500 hover:text-on-accent text-amber-400 border border-stone-700 hover:border-amber-400 rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-1.5 text-xs font-semibold group"
           title="Adicionar leitura em andamento"
         >
           <Plus size={16} className="transition-transform group-hover:scale-110" />
@@ -188,7 +188,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
           </p>
           <button
             onClick={handleOpenAdd}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm mt-2"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-on-accent font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm mt-2"
           >
             <Plus size={14} /> Adicionar Leitura
           </button>
@@ -307,7 +307,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                     >
                       <FileText size={14} />
                       {fichamentoCount > 0 && (
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 text-[8px] text-stone-950 font-bold flex items-center justify-center">
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 text-[8px] text-on-accent font-bold flex items-center justify-center">
                           {fichamentoCount}
                         </span>
                       )}
@@ -334,7 +334,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                     {/* Discreet 'Concluir Leitura' Button */}
                     <button
                       onClick={() => handleStartComplete(book)}
-                      className="ml-1 px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-stone-950 border border-emerald-500/30 hover:border-emerald-400 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                      className="ml-1 px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500 text-emerald-400 hover:text-on-accent border border-emerald-500/30 hover:border-emerald-400 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-xs"
                       title="Concluir leitura e enviar para o Diário Mensal"
                     >
                       <CheckCircle2 size={13} />
@@ -480,7 +480,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                 <button
                   type="submit"
                   disabled={saving || coverPending}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-on-accent text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
                 >
                   Iniciar Leitura
                 </button>
@@ -594,7 +594,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmComplete}
-                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-stone-950 text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-on-accent text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <CheckCircle2 size={15} />
                 <span>Concluir e Salvar no Diário</span>

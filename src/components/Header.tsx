@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Book, TabType } from '../types';
 import { calculateDashboardStats } from '../utils/helpers';
 import {
@@ -15,7 +15,10 @@ import {
   LogOut,
   User,
   CloudUpload,
+  Sun,
+  Moon,
 } from 'lucide-react';
+import { applyTheme, currentTheme, type Theme } from '../lib/theme';
 
 interface HeaderProps {
   books: Book[];
@@ -47,6 +50,12 @@ export const Header: React.FC<HeaderProps> = ({
   readingBooksCount = 0,
 }) => {
   const stats = calculateDashboardStats(books);
+  const [theme, setTheme] = useState<Theme>(currentTheme);
+  const toggleTheme = () => {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    setTheme(next);
+  };
   const isAllYearsSelected =
     availableYears.length > 0 && availableYears.every((y) => selectedYears.includes(y));
 
@@ -81,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onSelectAllYears}
               className={`px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                 isAllYearsSelected
-                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  ? 'bg-amber-500 text-on-accent shadow-xs'
                   : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
               }`}
             >
@@ -153,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onSelectTab('journal')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
                 activeTab === 'journal'
-                  ? 'bg-amber-500 text-stone-950 font-bold shadow-sm'
+                  ? 'bg-amber-500 text-on-accent font-bold shadow-sm'
                   : 'text-stone-300 hover:text-white hover:bg-stone-800'
               }`}
             >
@@ -165,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onSelectTab('reading')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
                 activeTab === 'reading'
-                  ? 'bg-amber-500 text-stone-950 font-bold shadow-sm'
+                  ? 'bg-amber-500 text-on-accent font-bold shadow-sm'
                   : 'text-stone-300 hover:text-white hover:bg-stone-800'
               }`}
             >
@@ -188,7 +197,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onSelectTab('dashboard')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
                 activeTab === 'dashboard'
-                  ? 'bg-amber-500 text-stone-950 font-bold shadow-sm'
+                  ? 'bg-amber-500 text-on-accent font-bold shadow-sm'
                   : 'text-stone-300 hover:text-white hover:bg-stone-800'
               }`}
             >
@@ -200,7 +209,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onSelectTab('matrix')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
                 activeTab === 'matrix'
-                  ? 'bg-amber-500 text-stone-950 font-bold shadow-sm'
+                  ? 'bg-amber-500 text-on-accent font-bold shadow-sm'
                   : 'text-stone-300 hover:text-white hover:bg-stone-800'
               }`}
             >
@@ -212,7 +221,7 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onSelectTab('table')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer ${
                 activeTab === 'table'
-                  ? 'bg-amber-500 text-stone-950 font-bold shadow-sm'
+                  ? 'bg-amber-500 text-on-accent font-bold shadow-sm'
                   : 'text-stone-300 hover:text-white hover:bg-stone-800'
               }`}
             >
@@ -240,6 +249,15 @@ export const Header: React.FC<HeaderProps> = ({
                 <CloudUpload size={18} className="text-amber-400" />
               </button>
             )}
+
+            <button
+              onClick={toggleTheme}
+              className="p-2 bg-stone-800 hover:bg-stone-700 border border-stone-700 rounded-lg shadow transition-all shrink-0 cursor-pointer flex items-center justify-center"
+              title={theme === 'dark' ? 'Usar tema claro' : 'Usar tema escuro'}
+              aria-label={theme === 'dark' ? 'Usar tema claro' : 'Usar tema escuro'}
+            >
+              {theme === 'dark' ? <Sun size={18} className="text-amber-400" /> : <Moon size={18} className="text-amber-400" />}
+            </button>
 
             {/* Logout Button */}
             {onLogout && (

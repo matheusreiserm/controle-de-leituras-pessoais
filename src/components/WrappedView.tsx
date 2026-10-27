@@ -47,7 +47,7 @@ export const WrappedView: React.FC<WrappedViewProps> = ({ books, availableYears 
       {/* Year Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-stone-900 border border-stone-800 p-5 rounded-3xl shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center text-stone-950 font-bold shadow-md">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500 flex items-center justify-center text-on-accent font-bold shadow-md">
             <Sparkles size={20} />
           </div>
           <div>
@@ -63,7 +63,7 @@ export const WrappedView: React.FC<WrappedViewProps> = ({ books, availableYears 
               onClick={() => setSelectedYear(yr)}
               className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                 selectedYear === yr
-                  ? 'bg-amber-500 text-stone-950 shadow-sm'
+                  ? 'bg-amber-500 text-on-accent shadow-sm'
                   : 'text-stone-400 hover:text-white'
               }`}
             >
