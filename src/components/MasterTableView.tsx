@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Book, FormatType, MonthName, LanguageType } from '../types';
 import { MONTHS_LIST } from '../utils/helpers';
+import { compareReadingOrder } from '../utils/readingOrder';
 import { StarRating } from './StarRating';
 import { CountryFlag } from './CountryFlag';
 import { Search, Filter, ArrowUpDown, Edit3, Trash2, Plus, Download, BookOpen, FileText, Image } from 'lucide-react';
@@ -49,6 +50,11 @@ export const MasterTableView: React.FC<MasterTableViewProps> = ({
         return matchesSearch && matchesMonth && matchesFormat && matchesRating && matchesLanguage;
       })
       .sort((a, b) => {
+        // "#" follows reading order (year, month, position), not the order the books were created.
+        if (sortField === 'id') return sortOrder === 'asc' ? compareReadingOrder(a, b) : compareReadingOrder(b, a);
+        // Unknown publication year (0) stays at the end in both directions.
+        if (sortField === 'year' && a.year !== b.year && (!a.year || !b.year)) return a.year ? -1 : 1;
+
         let valA = a[sortField];
         let valB = b[sortField];
 

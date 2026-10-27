@@ -62,8 +62,8 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
   // Add Reading Form state
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
-  const [pubYear, setPubYear] = useState<number>(getCurrentYear());
-  const [pages, setPages] = useState<number>(200);
+  const [pubYear, setPubYear] = useState<number>(0);
+  const [pages, setPages] = useState<number>(0);
   const [nationality, setNationality] = useState('Brasil');
   const [format, setFormat] = useState<FormatType>('Físico');
   const [language, setLanguage] = useState<LanguageType>('Português');
@@ -75,8 +75,8 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
   const handleOpenAdd = () => {
     setTitle('');
     setAuthor('');
-    setPubYear(getCurrentYear());
-    setPages(200);
+    setPubYear(0);
+    setPages(0);
     setNationality('Brasil');
     setFormat('Físico');
     setLanguage('Português');
@@ -96,8 +96,8 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
     const error = await onAddReading({
       title: title.trim(),
       author: author.trim(),
-      year: Number(pubYear) || getCurrentYear(),
-      pages: Number(pages) || 1,
+      year: Number(pubYear) || 0,
+      pages: Number(pages) || 0,
       nationality: nationality.trim(),
       continent,
       format,
@@ -417,8 +417,9 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                   <label className="text-xs font-semibold text-stone-300">Ano Publicação</label>
                   <input
                     type="number"
-                    value={pubYear}
-                    onChange={(e) => setPubYear(Number(e.target.value))}
+                    value={pubYear || ''}
+                    placeholder="Desconhecido"
+                    onChange={(e) => setPubYear(Number(e.target.value) || 0)}
                     className="w-full px-3 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-100 focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -427,9 +428,10 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                   <label className="text-xs font-semibold text-stone-300">Total Páginas</label>
                   <input
                     type="number"
-                    value={pages}
-                    min={1}
-                    onChange={(e) => setPages(Number(e.target.value))}
+                    value={pages || ''}
+                    min={0}
+                    placeholder="Páginas"
+                    onChange={(e) => setPages(Number(e.target.value) || 0)}
                     className="w-full px-3 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-100 focus:outline-none focus:border-amber-500"
                   />
                 </div>

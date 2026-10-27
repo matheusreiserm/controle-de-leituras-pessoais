@@ -20,3 +20,10 @@ test('backup round trip preserves embedded cover and bibliographic notes', () =>
 test('duplicate IDs cannot silently overwrite another book on restore', () => {
   assert.equal(validateBackupPayload([INITIAL_BOOKS[0], INITIAL_BOOKS[0]]).isValid, false);
 });
+
+test('restoring keeps an unknown publication year instead of replacing it with the reading year', () => {
+  const unknown = INITIAL_BOOKS.find((book) => book.year === 0)!;
+  const restored = validateBackupPayload(JSON.parse(JSON.stringify(createBackupPayload([unknown]))));
+  assert.equal(restored.isValid, true);
+  assert.equal(restored.books?.[0].year, 0);
+});

@@ -149,11 +149,24 @@ export function getCountryContinent(countryName: string): ContinentType {
   return 'Europa';
 }
 
+export const DECADE_BEFORE_1900 = 'Antes de 1900';
+export const DECADE_UNKNOWN = 'Sem ano informado';
+
+/** Publication decade. Everything before 1900 shares one group; year 0 means the year was not recorded. */
 export function getDecade(year: number): string {
-  if (!year) return 'Desconhecido';
-  if (year < 1900) return 'Séc. XIX ou anterior';
-  const decadeStart = Math.floor(year / 10) * 10;
-  return `Anos ${decadeStart}`;
+  if (!year || !Number.isFinite(year)) return DECADE_UNKNOWN;
+  if (year < 1900) return DECADE_BEFORE_1900;
+  return `Anos ${Math.floor(year / 10) * 10}`;
+}
+
+function decadeRank(label: string): number {
+  if (label === DECADE_BEFORE_1900) return 0;
+  return Number(label.replace(/\D/g, '')) || 99999;
+}
+
+/** Chronological order of decade labels: before 1900 first, then 1900, 1910…, unknown year last. */
+export function compareDecades(a: string, b: string): number {
+  return decadeRank(a) - decadeRank(b);
 }
 
 export function calculateCountryStats(books: Book[]): CountryStat[] {

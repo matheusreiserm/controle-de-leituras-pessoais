@@ -1,6 +1,7 @@
 import { resolveCoverUrl } from '../utils/covers';
 import React, { useState } from 'react';
 import { Book } from '../types';
+import { currentYear, isRead } from '../utils/readingOrder';
 import { Sparkles, Trophy, Flame, Globe2, Award, Star } from 'lucide-react';
 
 interface WrappedViewProps {
@@ -9,13 +10,14 @@ interface WrappedViewProps {
 }
 
 export const WrappedView: React.FC<WrappedViewProps> = ({ books, availableYears }) => {
+  // Opens on the latest year with readings: in early January the new year is still empty.
   const [selectedYear, setSelectedYear] = useState<number>(() => {
-    return availableYears.length > 0 ? Math.max(...availableYears) : 2026;
+    const yearsWithReadings = books.filter(isRead).map((b) => b.readingYear);
+    if (yearsWithReadings.length) return Math.max(...yearsWithReadings);
+    return availableYears.length > 0 ? Math.max(...availableYears) : currentYear();
   });
 
-  const yearBooks = books.filter(
-    (b) => (b.status || 'read') === 'read' && (b.readingYear || 2026) === selectedYear
-  );
+  const yearBooks = books.filter((b) => isRead(b) && b.readingYear === selectedYear);
 
   const totalBooks = yearBooks.length;
   const totalPages = yearBooks.reduce((acc, b) => acc + (b.pages || 0), 0);
