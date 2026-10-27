@@ -9,6 +9,7 @@ import { BookOpen, Calendar, Edit3, Trash2, Globe, FileText, Smartphone, HardDri
 interface BookCardProps {
   book: Book;
   displayNumber?: number;
+  monthNumber?: number;
   showYearBadge?: boolean;
   onEdit?: (book: Book) => void;
   onDelete?: (id: number) => void;
@@ -19,6 +20,7 @@ interface BookCardProps {
 export const BookCard: React.FC<BookCardProps> = ({
   book,
   displayNumber,
+  monthNumber,
   showYearBadge = false,
   onEdit,
   onDelete,
@@ -68,7 +70,7 @@ export const BookCard: React.FC<BookCardProps> = ({
           )}
           <span>{book.month}</span>
           <span className="text-stone-300 dark:text-stone-700">•</span>
-          <span className="text-stone-400">mês #{book.monthId}</span>
+          <span className="text-stone-400">mês #{monthNumber ?? book.monthId}</span>
         </div>
       </div>
 

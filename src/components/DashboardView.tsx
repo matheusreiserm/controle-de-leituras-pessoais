@@ -1,6 +1,6 @@
 import React from 'react';
 import { Book } from '../types';
-import { calculateDashboardStats, calculateCountryStats, getContinentColors } from '../utils/helpers';
+import { calculateDashboardStats, calculateCountryStats, compareDecades, getContinentColors } from '../utils/helpers';
 import { StarRating } from './StarRating';
 import { CountryFlag } from './CountryFlag';
 import { BookOpen, UserCheck, Globe, Star, Layers, MapPin, Languages, PieChart, Sparkles } from 'lucide-react';
@@ -37,7 +37,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ books, onNavigateT
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-stone-500 dark:text-stone-400 font-mono">{count} livros</span>
+            <span className="text-stone-500 dark:text-stone-400 font-mono">{count} {count === 1 ? 'livro' : 'livros'}</span>
             <span className="font-bold text-stone-900 dark:text-stone-100 font-mono w-9 text-right">
               {percentage}%
             </span>
@@ -338,18 +338,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ books, onNavigateT
                 <BookOpen size={18} />
               </span>
               <h3 className="font-bold text-stone-900 dark:text-stone-100 text-sm">
-                Década de Publicação (Anos 1800 a 2020)
+                Década de Publicação
               </h3>
             </div>
             <span className="text-xs text-stone-400 font-mono">{Object.keys(stats.byDecade).length} décadas</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+          {/* Filled column by column, so reading down follows the decades in order. */}
+          <div className="sm:columns-2 gap-x-6 [&>*]:mb-3 [&>*]:break-inside-avoid">
             {Object.entries(stats.byDecade)
-              .sort((a, b) => {
-                // custom sort by year order
-                return a[0].localeCompare(b[0]);
-              })
+              .sort((a, b) => compareDecades(a[0], b[0]))
               .map(([dec, count]) =>
                 renderDistributionBar(dec, count, stats.totalBooks, 'bg-stone-700 dark:bg-stone-300')
               )}

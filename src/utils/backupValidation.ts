@@ -174,7 +174,7 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
       id,
       title: item.title.trim(),
       author: item.author.trim(),
-      year: Number(item.year) || readingYear,
+      year: Number.isFinite(Number(item.year)) ? Number(item.year) : 0,
       pages: validPages,
       nationality: typeof item.nationality === 'string' ? item.nationality.trim() : 'Brasil',
       continent: typeof item.continent === 'string' ? item.continent.trim() : 'América do Sul',

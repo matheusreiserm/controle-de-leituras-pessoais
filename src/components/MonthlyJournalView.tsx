@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Book, MonthName } from '../types';
-import { MONTHS_LIST } from '../utils/helpers';
+import { MONTHS_LIST, compareDecades, getDecade } from '../utils/helpers';
+import { compareReadingOrder, monthReadingNumbers, overallReadingNumbers } from '../utils/readingOrder';
 import { BookCard } from './BookCard';
 import { Calendar, BookOpen, UserCheck, Layers, Filter, Globe, Clock, User, Search, X, ArrowUpDown } from 'lucide-react';
 
@@ -9,6 +10,8 @@ const REVERSE_MONTHS_LIST = [...MONTHS_LIST].reverse();
 
 interface MonthlyJournalViewProps {
   books: Book[];
+  /** Whole collection, so the global number in "Todos" mode counts every year even when only some are selected. */
+  allBooks?: Book[];
   selectedYears?: number[];
   availableYears?: number[];
   onEditBook?: (book: Book) => void;
@@ -17,26 +20,9 @@ interface MonthlyJournalViewProps {
   onOpenFichamento?: (book: Book) => void;
 }
 
-function getBookDecade(year: number | string): string {
-  if (typeof year === 'string') {
-    if (year.includes('XI')) return 'Século XI';
-    if (year.includes('XIV')) return 'Século XIV';
-    if (year.includes('II')) return 'Séc. II (Antiguidade)';
-    const parsed = parseInt(year, 10);
-    if (!isNaN(parsed)) year = parsed;
-    else return 'Clássicos Antigos';
-  }
-  if (typeof year === 'number') {
-    if (year < 1800) return 'Antes de 1800';
-    if (year < 1900) return 'Século XIX (1800s)';
-    const dec = Math.floor(year / 10) * 10;
-    return `${dec}s`;
-  }
-  return 'Outros';
-}
-
 export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
   books,
+  allBooks,
   selectedYears = [],
   availableYears = [],
   onEditBook,
@@ -74,13 +60,20 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
   const uniqueDecades = useMemo(() => {
     const counts: Record<string, number> = {};
     books.forEach((b) => {
-      const dec = getBookDecade(b.year);
+      const dec = getDecade(b.year);
       counts[dec] = (counts[dec] || 0) + 1;
     });
     return Object.entries(counts)
-      .sort((a, b) => a[0].localeCompare(b[0]))
+      .sort((a, b) => compareDecades(a[0], b[0]))
       .map(([decade, count]) => ({ decade, count }));
   }, [books]);
+
+  // Annual number in a single year; in "Todos" mode, the global number across the whole collection.
+  const readingNumbers = useMemo(
+    () => overallReadingNumbers(isAllYearsMode && allBooks ? allBooks : books),
+    [isAllYearsMode, allBooks, books]
+  );
+  const monthNumbers = useMemo(() => monthReadingNumbers(books), [books]);
 
   const uniqueAuthors = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -98,7 +91,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
   const filteredAllBooks = useMemo(() => {
     let result = books.filter((b) => {
       if (selectedCountry !== 'Todos' && b.nationality !== selectedCountry) return false;
-      if (selectedDecade !== 'Todas' && getBookDecade(b.year) !== selectedDecade) return false;
+      if (selectedDecade !== 'Todas' && getDecade(b.year) !== selectedDecade) return false;
       if (selectedAuthor !== 'Todos' && b.author !== selectedAuthor) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -111,14 +104,13 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
 
     // Apply sorting
     return result.sort((a, b) => {
-      if (sortOrder === 'reverse') return b.id - a.id;
+      if (sortOrder === 'reverse') return compareReadingOrder(b, a);
       if (sortOrder === 'pubYear') {
-        const yA = typeof a.year === 'number' ? a.year : 0;
-        const yB = typeof b.year === 'number' ? b.year : 0;
-        return yA - yB;
+        // Year 0 means the year was not recorded: those go last.
+        return (a.year || 99999) - (b.year || 99999) || compareReadingOrder(a, b);
       }
       if (sortOrder === 'title') return a.title.localeCompare(b.title);
-      return a.id - b.id; // default reading order
+      return compareReadingOrder(a, b); // default reading order
     });
   }, [books, selectedCountry, selectedDecade, selectedAuthor, searchQuery, sortOrder]);
 
@@ -150,7 +142,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
 
   // Sort books within each month from most recent read to oldest read
   Object.keys(booksByMonth).forEach((m) => {
-    booksByMonth[m].sort((a, b) => (b.monthId || b.id) - (a.monthId || a.id));
+    booksByMonth[m].sort((a, b) => compareReadingOrder(b, a));
   });
 
   const displayMonths =
@@ -186,11 +178,11 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
             {/* Total Summary Badge */}
             <div className="flex items-center gap-2 text-xs bg-stone-100 dark:bg-stone-800 px-3 py-1.5 rounded-xl self-start sm:self-auto font-mono text-stone-700 dark:text-stone-300">
               <span className="font-bold text-amber-600 dark:text-amber-400">{filteredAllBooks.length}</span>
-              <span>obras</span>
+              <span>{filteredAllBooks.length === 1 ? 'obra' : 'obras'}</span>
               <span>•</span>
               <span>{totalPagesFiltered.toLocaleString('pt-BR')} pág</span>
               <span>•</span>
-              <span>{totalAuthorsFiltered} autores</span>
+              <span>{totalAuthorsFiltered} {totalAuthorsFiltered === 1 ? 'autor' : 'autores'}</span>
               <span>•</span>
               <span>{totalCountriesFiltered} países</span>
             </div>
@@ -335,7 +327,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
             <div className="flex items-center justify-between text-xs text-stone-500 font-semibold px-1">
               <span>Exibindo caixa única de leituras ({filteredAllBooks.length} itens):</span>
               <span className="font-mono text-amber-600 dark:text-amber-400">
-                # global de leitura 1 até #{books.length}
+                # global de leitura 1 até #{readingNumbers.size}
               </span>
             </div>
 
@@ -344,7 +336,8 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
                 <BookCard
                   key={book.id}
                   book={book}
-                  displayNumber={book.id}
+                  displayNumber={readingNumbers.get(book.id)}
+                  monthNumber={monthNumbers.get(book.id)}
                   showYearBadge={true}
                   onEdit={onEditBook}
                   onDelete={onDeleteBook}
@@ -466,7 +459,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
                         {month}
                       </h2>
                       <p className="text-xs text-stone-500">
-                        {monthBooks.length} obras concluídas no ano
+                        {monthBooks.length} {monthBooks.length === 1 ? 'obra concluída' : 'obras concluídas'} no ano
                       </p>
                     </div>
                   </div>
@@ -474,7 +467,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
                   {/* Month Summary Bar */}
                   <div className="flex items-center gap-3 text-xs bg-stone-100 dark:bg-stone-800/60 px-3 py-1.5 rounded-xl border border-stone-200 dark:border-stone-700/60 self-start sm:self-auto">
                     <span className="flex items-center gap-1 font-mono font-bold text-stone-700 dark:text-stone-300">
-                      <BookOpen size={13} className="text-amber-500" /> {monthBooks.length} livros
+                      <BookOpen size={13} className="text-amber-500" /> {monthBooks.length} {monthBooks.length === 1 ? 'livro' : 'livros'}
                     </span>
                     <span className="text-stone-300 dark:text-stone-700">•</span>
                     <span className="flex items-center gap-1 font-mono font-bold text-stone-700 dark:text-stone-300">
@@ -482,18 +475,19 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
                     </span>
                     <span className="text-stone-300 dark:text-stone-700">•</span>
                     <span className="flex items-center gap-1 font-mono font-bold text-stone-700 dark:text-stone-300">
-                      <UserCheck size={13} className="text-emerald-500" /> {monthAuthors} autores
+                      <UserCheck size={13} className="text-emerald-500" /> {monthAuthors} {monthAuthors === 1 ? 'autor' : 'autores'}
                     </span>
                   </div>
                 </div>
 
-                {/* Grid of Cards - Uses annual reading number (yearBookId) */}
+                {/* Grid of Cards - annual reading number, in reading order */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {monthBooks.map((book) => (
                     <BookCard
                       key={book.id}
                       book={book}
-                      displayNumber={book.yearBookId}
+                      displayNumber={readingNumbers.get(book.id) ?? book.yearBookId}
+                      monthNumber={monthNumbers.get(book.id)}
                       showYearBadge={false}
                       onEdit={onEditBook}
                       onDelete={onDeleteBook}

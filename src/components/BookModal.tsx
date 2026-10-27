@@ -57,12 +57,12 @@ export const BookModal: React.FC<BookModalProps> = ({
       setCoverUrl(initialData.coverUrl || '');
 
     } else {
-      // Reset defaults for new book (Current Year: 2026, Current Month: Agosto, Cover: URL da Web)
+      // New book: reading in the current month; publication year and pages stay empty until typed.
       setReadingYear(getCurrentYear());
       setTitle('');
       setAuthor('');
-      setYear(getCurrentYear() - 2);
-      setPages(200);
+      setYear(0);
+      setPages(0);
       setMonth(getCurrentMonthName());
       setNationality('Brasil');
       setFormat('Físico');
@@ -86,11 +86,11 @@ export const BookModal: React.FC<BookModalProps> = ({
       const error = await onSave({
         id: initialData?.id,
         status: initialData?.status,
-        readingYear: Number(readingYear) || 2025,
+        readingYear: Number(readingYear) || getCurrentYear(),
         title: title.trim(),
         author: author.trim(),
-        year: Number(year) || 2024,
-        pages: Number(pages) || 1,
+        year: Number(year) || 0,
+        pages: Number(pages) || 0,
         month,
         nationality: nationality.trim(),
         continent,
@@ -112,6 +112,10 @@ export const BookModal: React.FC<BookModalProps> = ({
   };
 
   const detectedContinent = getCountryContinent(nationality);
+  // From the current year back to 2021, plus the book's own year when it is older.
+  const readingYearOptions = Array.from(
+    new Set([...Array.from({ length: getCurrentYear() - 2020 }, (_, index) => getCurrentYear() - index), readingYear])
+  ).sort((a, b) => b - a);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/70 backdrop-blur-sm animate-in fade-in duration-200">
@@ -188,12 +192,11 @@ export const BookModal: React.FC<BookModalProps> = ({
                 onChange={(e) => setReadingYear(Number(e.target.value))}
                 className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-xl text-xs sm:text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500 font-bold"
               >
-                <option value={2026}>2026 (Atual)</option>
-                <option value={2025}>2025</option>
-                <option value={2024}>2024</option>
-                <option value={2023}>2023</option>
-                <option value={2022}>2022</option>
-                <option value={2021}>2021</option>
+                {readingYearOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option === getCurrentYear() ? `${option} (Atual)` : option}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -220,10 +223,11 @@ export const BookModal: React.FC<BookModalProps> = ({
               </label>
               <input
                 type="number"
-                min="1800"
-                max="2030"
-                value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
+                min="0"
+                max={getCurrentYear() + 1}
+                value={year || ''}
+                placeholder="Desconhecido"
+                onChange={(e) => setYear(Number(e.target.value) || 0)}
                 className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-xl text-xs sm:text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500 font-mono"
               />
             </div>
@@ -234,9 +238,10 @@ export const BookModal: React.FC<BookModalProps> = ({
               </label>
               <input
                 type="number"
-                min="1"
-                value={pages}
-                onChange={(e) => setPages(Number(e.target.value))}
+                min="0"
+                value={pages || ''}
+                placeholder="Páginas"
+                onChange={(e) => setPages(Number(e.target.value) || 0)}
                 className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-xl text-xs sm:text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500 font-mono"
               />
             </div>

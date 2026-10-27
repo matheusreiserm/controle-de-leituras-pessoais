@@ -19,6 +19,7 @@ import { LoginView } from './components/LoginView';
 import { auth, logout, ALLOWED_EMAIL } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { MONTHS_LIST } from './utils/helpers';
+import { currentYear, isRead, nextMonthPosition, planNewReading, renumberYears } from './utils/readingOrder';
 import {
   areBookCollectionsEquivalent,
   createUserBook,
@@ -28,6 +29,7 @@ import {
   replaceUserBooks,
   saveUserBook,
   subscribeUserBooks,
+  updateReadingNumbers,
 } from './lib/firestoreBooks';
 import { exportToGoogleDrive } from './lib/driveSync';
 
@@ -181,15 +183,16 @@ export default function App() {
     };
   }, [syncPhase, isMigrationModalOpen, books]);
 
-  const CURRENT_YEAR = 2026;
+  // Taken from the calendar: on January 1st the new year is listed and selected, its numbering starting at #1.
+  const CURRENT_YEAR = currentYear();
 
   const availableYears = useMemo(() => {
-    const yearsSet = new Set<number>([CURRENT_YEAR, 2025, 2024, 2023]);
+    const yearsSet = new Set<number>([CURRENT_YEAR]);
     books.forEach((b) => {
       if (b.readingYear) yearsSet.add(b.readingYear);
     });
     return Array.from(yearsSet).sort((a, b) => b - a);
-  }, [books]);
+  }, [books, CURRENT_YEAR]);
 
   const [selectedYears, setSelectedYears] = useState<number[]>(() => [CURRENT_YEAR]);
 
@@ -215,7 +218,7 @@ export default function App() {
 
   // Filtered books list based on selected years
   const filteredBooks = useMemo(() => {
-    return books.filter((b) => selectedYears.includes(b.readingYear || 2026));
+    return books.filter((b) => selectedYears.includes(b.readingYear));
   }, [books, selectedYears]);
 
   // Read books only
@@ -271,49 +274,105 @@ export default function App() {
       () => persistBook(book, label)
     );
 
-  const persistNewBook = (
-    buildBook: (id: number) => Book,
+  // Readings shifted by an insertion, move or removal only change their two number fields.
+  const applyReadingNumbers = (prev: Book[], changes: Book[]): Book[] => {
+    const byId = new Map(changes.map((book) => [book.id, book]));
+    return prev.map((book) => {
+      const change = byId.get(book.id);
+      return change ? { ...book, yearBookId: change.yearBookId, monthId: change.monthId } : book;
+    });
+  };
+
+  /** Saves a book and keeps the readings of the given years numbered in chronological order. */
+  const persistReading = (book: Book, label: string, years: number[]): Promise<string | null> => {
+    const nextBooks = books.some((item) => item.id === book.id)
+      ? books.map((item) => (item.id === book.id ? book : item))
+      : [...books, book];
+    const renumbered = renumberYears(nextBooks, years);
+    const saved = renumbered.find((item) => item.id === book.id) ?? book;
+    const shifted = renumbered.filter((item) => item.id !== book.id);
+    return runWrite(
+      label,
+      async () => {
+        await saveUserBook(currentUser!.uid, saved);
+        if (shifted.length) await updateReadingNumbers(currentUser!.uid, shifted);
+      },
+      () => setBooks((prev) => applyReadingNumbers(
+        prev.some((item) => item.id === saved.id) ? prev.map((item) => (item.id === saved.id ? saved : item)) : [...prev, saved],
+        shifted
+      )),
+      () => persistReading(book, label, years)
+    );
+  };
+
+  /**
+   * Creates a book. A reading goes to the end of its month with the matching number in the year;
+   * readings of later months move one number up.
+   */
+  const persistNewReading = (
+    draft: Omit<Book, 'id' | 'monthId'>,
     label: string,
     requestId: string = crypto.randomUUID()
-  ): Promise<string | null> => runWrite(
-    label,
-    () => createUserBook(currentUser!.uid, buildBook, requestId),
-    (book) => setBooks((prev) => [...prev.filter((item) => item.id !== book.id), book]),
-    () => persistNewBook(buildBook, label, requestId)
-  );
+  ): Promise<string | null> => {
+    const { monthId, yearBookId, shifted } = planNewReading(books, draft);
+    const buildBook = (id: number): Book => ({
+      ...draft,
+      id,
+      monthId,
+      ...(yearBookId !== undefined && { yearBookId }),
+    });
+    return runWrite(
+      label,
+      async () => {
+        const created = await createUserBook(currentUser!.uid, buildBook, requestId);
+        if (shifted.length) await updateReadingNumbers(currentUser!.uid, shifted);
+        return created;
+      },
+      (created) => setBooks((prev) => applyReadingNumbers([...prev.filter((item) => item.id !== created.id), created], shifted)),
+      () => persistNewReading(draft, label, requestId)
+    );
+  };
 
   const handleSaveBook = async (bookData: Omit<Book, 'id' | 'monthId'> & { id?: number }): Promise<string | null> => {
     if (bookData.id) {
-      const updatedBook: Book = {
-        ...books.find((b) => b.id === bookData.id),
-        ...bookData,
-      } as Book;
-      return persistBook(updatedBook, 'Edição do livro');
-    } else {
-      const yearToUse = bookData.readingYear || 2026;
-      const sameMonthCount = books.filter(
-        (b) => (b.readingYear || 2026) === yearToUse && b.month === bookData.month
-      ).length;
-
-      return persistNewBook((id) => ({
-        ...bookData,
-        readingYear: yearToUse,
-        id,
-        monthId: sameMonthCount + 1,
-        status: bookData.status || 'read',
-      }), 'Novo livro');
+      const original = books.find((b) => b.id === bookData.id);
+      if (!original) return 'O livro não foi encontrado no acervo atual.';
+      let updated = { ...original, ...bookData } as Book;
+      const moved =
+        original.readingYear !== updated.readingYear ||
+        original.month !== updated.month ||
+        isRead(original) !== isRead(updated);
+      // A reading moved to another month or year (or a wish marked as read) goes to the end of that month.
+      if (moved && isRead(updated)) {
+        updated = { ...updated, monthId: nextMonthPosition(books, updated.readingYear, updated.month, updated.id) };
+      }
+      return persistReading(updated, 'Edição do livro', [original.readingYear, updated.readingYear]);
     }
+    return persistNewReading(
+      { ...bookData, readingYear: bookData.readingYear || CURRENT_YEAR, status: bookData.status || 'read' },
+      'Novo livro'
+    );
   };
 
-  const persistDeleteBook = (id: number): Promise<string | null> => runWrite(
-    'Exclusão do livro',
-    () => deleteUserBook(currentUser!.uid, id),
-    () => setBooks((prev) => prev.filter((book) => book.id !== id)),
-    () => persistDeleteBook(id)
-  );
+  const persistDeleteBook = (id: number): Promise<string | null> => {
+    const target = books.find((book) => book.id === id);
+    const shifted = target && isRead(target)
+      ? renumberYears(books.filter((book) => book.id !== id), [target.readingYear])
+      : [];
+    return runWrite(
+      'Exclusão do livro',
+      async () => {
+        await deleteUserBook(currentUser!.uid, id);
+        if (shifted.length) await updateReadingNumbers(currentUser!.uid, shifted);
+      },
+      () => setBooks((prev) => applyReadingNumbers(prev.filter((book) => book.id !== id), shifted)),
+      () => persistDeleteBook(id)
+    );
+  };
 
   const handleDeleteBook = (id: number) => {
-    if (window.confirm(`Tem certeza que deseja excluir a leitura #${id}?`)) {
+    const book = books.find((item) => item.id === id);
+    if (window.confirm(`Tem certeza que deseja excluir ${book ? `"${book.title}"` : `a leitura #${id}`}?`)) {
       void persistDeleteBook(id);
     }
   };
@@ -325,14 +384,8 @@ export default function App() {
   };
 
   // In-Progress Reading Handlers
-  const handleAddReadingBook = (newBookData: Omit<Book, 'id' | 'monthId'>) => {
-    return persistNewBook((id) => ({
-      ...newBookData,
-      id,
-      status: 'reading',
-      monthId: 1,
-    }), 'Nova leitura em andamento');
-  };
+  const handleAddReadingBook = (newBookData: Omit<Book, 'id' | 'monthId'>) =>
+    persistNewReading({ ...newBookData, status: 'reading' }, 'Nova leitura em andamento');
 
   const handleCompleteReading = (
     bookId: number,
@@ -343,37 +396,28 @@ export default function App() {
     const target = books.find((book) => book.id === bookId);
     if (!target) return;
 
-    const readInTargetYear = books.filter(
-        (b) => (!b.status || b.status === 'read') && (b.readingYear || 2026) === readingYear
-      );
-    const readInTargetMonth = readInTargetYear.filter((b) => b.month === month);
-
+    // Same rule as a reading added directly: end of the chosen month, numbered within that year.
     const completedBook: Book = {
       ...target,
       status: 'read',
       rating,
       month,
       readingYear,
-      yearBookId: readInTargetYear.length + 1,
-      monthId: readInTargetMonth.length + 1,
+      monthId: nextMonthPosition(books, readingYear, month, target.id),
     };
 
-    void persistBook(completedBook, 'Conclusão da leitura');
+    void persistReading(completedBook, 'Conclusão da leitura', [readingYear]);
   };
 
   // Wishlist Handlers
   const handleAddWish = (title: string, author: string) => {
     const now = new Date();
-    const currMonthName = MONTHS_LIST[now.getMonth()] || 'Agosto';
-    void persistNewBook((id) => ({
-      id,
+    void persistNewReading({
       title,
       author,
-      readingYear: 2026,
-      yearBookId: 0,
-      monthId: now.getMonth() + 1,
-      month: currMonthName,
-      year: 2026,
+      readingYear: CURRENT_YEAR,
+      month: MONTHS_LIST[now.getMonth()],
+      year: 0, // Unknown until the book is marked as read.
       pages: 0,
       nationality: 'Brasil',
       continent: 'América do Sul',
@@ -381,11 +425,12 @@ export default function App() {
       language: 'Português',
       rating: 5,
       status: 'wishlist',
-    }), 'Novo item na lista de desejos');
+    }, 'Novo item na lista de desejos');
   };
 
   const handleMarkAsRead = (wishBook: Book) => {
-    setEditingBook({ ...wishBook, status: 'read' });
+    // Read now: the form starts in the current month and year, not the day the wish was noted.
+    setEditingBook({ ...wishBook, status: 'read', readingYear: CURRENT_YEAR, month: MONTHS_LIST[new Date().getMonth()] });
     setIsModalOpen(true);
   };
 
@@ -491,6 +536,7 @@ export default function App() {
         {activeTab === 'journal' && (
           <MonthlyJournalView
             books={readBooks}
+            allBooks={books}
             selectedYears={selectedYears}
             availableYears={availableYears}
             onEditBook={handleOpenEditModal}

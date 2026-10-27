@@ -214,6 +214,30 @@ export async function deleteUserBook(userId: string, bookId: number): Promise<vo
   }
 }
 
+/**
+ * Updates only the reading numbers of existing books, for readings shifted when another one is
+ * inserted, moved or removed. Two small fields per book, so one batch covers a whole year.
+ */
+export async function updateReadingNumbers(
+  userId: string,
+  books: Pick<Book, 'id' | 'yearBookId' | 'monthId'>[]
+): Promise<void> {
+  try {
+    for (let index = 0; index < books.length; index += 400) {
+      const batch = writeBatch(db);
+      books.slice(index, index + 400).forEach((book) => {
+        batch.update(doc(db, 'users', userId, 'books', String(book.id)), {
+          yearBookId: book.yearBookId,
+          monthId: book.monthId,
+        });
+      });
+      await batch.commit();
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, getUserBooksPath(userId));
+  }
+}
+
 export async function createUserBook(
   userId: string,
   buildBook: (id: number) => Book,
