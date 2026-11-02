@@ -27,3 +27,10 @@ test('restoring keeps an unknown publication year instead of replacing it with t
   assert.equal(restored.isValid, true);
   assert.equal(restored.books?.[0].year, 0);
 });
+
+test('restoring keeps the table of contents and the text chosen for each quote', () => {
+  const fichamento = { items: [{ id: 'q', page: '20', text: 'x', sectionId: 's2' }], sections: [{ id: 's2', title: 'Modesta proposta', startPage: 17, author: 'Swift' }] };
+  const restored = validateBackupPayload(JSON.parse(JSON.stringify(createBackupPayload([{ ...INITIAL_BOOKS[0], fichamento }]))));
+  assert.deepEqual(restored.books?.[0].fichamento?.sections, fichamento.sections);
+  assert.equal(restored.books?.[0].fichamento?.items[0].sectionId, 's2');
+});

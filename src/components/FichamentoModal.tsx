@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Book, FichamentoData, FichamentoItem } from '../types';
-import { X, Plus, Trash2, FileText, Copy, Check, BookOpen, Pencil, Undo2, Download, type LucideIcon } from 'lucide-react';
+import { Book, FichamentoData, FichamentoItem, FichamentoSection } from '../types';
+import { X, Plus, Trash2, FileText, Copy, Check, BookOpen, Pencil, Undo2, Download, ListTree, ChevronDown, type LucideIcon } from 'lucide-react';
 import {
+  cleanSections,
   createEmptyItem,
+  groupBySection,
+  sectionOf,
+  sortSections,
   fichamentoFileName,
   formatFichamentoHtml,
   formatFichamentoMarkdown,
@@ -104,6 +108,10 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   const [reference, setReference] = useState('');
   const [publishedReference, setPublishedReference] = useState('');
   const [items, setItems] = useState<FichamentoItem[]>([]);
+  // Table of contents of collections (stories, essays); quotes are grouped by text through their page.
+  const [sections, setSections] = useState<FichamentoSection[]>([]);
+  const [publishedSections, setPublishedSections] = useState('[]');
+  const [summaryOpen, setSummaryOpen] = useState(false);
   // Snapshot of what is saved; anything that differs from it is waiting to be published.
   const [published, setPublished] = useState<Map<string, FichamentoItem>>(() => new Map());
   const [editing, setEditing] = useState<Set<string>>(() => new Set());
@@ -123,6 +131,10 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
     const saved = loadPublishedItems(book.fichamento?.items);
     const savedReference = book.fichamento?.reference || getDefaultReference(book);
     const first = saved.length ? null : createEmptyItem();
+    const savedSections = cleanSections(book.fichamento?.sections || []);
+    setSections(savedSections);
+    setPublishedSections(JSON.stringify(savedSections));
+    setSummaryOpen(false);
     setReference(savedReference);
     setPublishedReference(savedReference);
     setPublished(new Map(saved.map((item) => [item.id, item])));
@@ -152,18 +164,46 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   useEffect(() => () => window.clearTimeout(publishedTimer.current), []);
 
   const referenceChanged = reference.trim() !== publishedReference.trim();
+  const sectionsChanged = JSON.stringify(cleanSections(sections)) !== publishedSections;
   const pending = useMemo(
-    () => summarize(items, published, removed, referenceChanged).pending,
-    [items, published, removed, referenceChanged]
+    () => summarize(items, published, removed, referenceChanged).pending + (sectionsChanged ? 1 : 0),
+    [items, published, removed, referenceChanged, sectionsChanged]
   );
 
   if (!isOpen || !book) return null;
 
   const visibleItems = items.filter((item) => !removed.has(item.id));
   const visibleCount = visibleItems.filter(hasContent).length;
+  const sortedSections = sortSections(sections);
+  const groups = groupBySection(visibleItems, sortedSections);
+  // Numbers follow the order on screen, group after group.
+  const numbers = new Map(groups.flatMap((group) => group.items).map((item, index) => [item.id, index] as const));
+  const autoSectionLabel = (page: string) => {
+    const found = sectionOf({ page }, sortedSections);
+    return found ? `Pela página: ${found.title || 'sem título'}` : 'Pela página';
+  };
 
   const updateItem = (id: string, field: 'page' | 'text', value: string) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
+  };
+
+  const setItemSection = (id: string, sectionId: string) => {
+    setItems((prev) => prev.map((item) => {
+      if (item.id !== id) return item;
+      const { sectionId: _previous, ...rest } = item;
+      return sectionId ? { ...rest, sectionId } : rest;
+    }));
+  };
+
+  const updateSection = (id: string, patch: Partial<FichamentoSection>) => {
+    setSections((prev) => prev.map((section) => (section.id === id ? { ...section, ...patch } : section)));
+  };
+
+  const addSection = () => {
+    const sorted = sortSections(sections);
+    const last = sorted[sorted.length - 1];
+    setSections((prev) => [...prev, { id: createEmptyItem().id, title: '', startPage: last ? last.startPage + 1 : 1 }]);
+    setSummaryOpen(true);
   };
 
   const addItem = () => {
@@ -205,16 +245,23 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
     if (isSaving || !pending) return;
     const finalItems = itemsToPublish(items, removed);
     const finalReference = reference.trim();
+    const finalSections = cleanSections(sections);
     setIsSaving(true);
     setSaveError('');
     try {
-      const error = await onSave(book.id, { reference: finalReference, items: finalItems });
+      const error = await onSave(book.id, {
+        reference: finalReference,
+        items: finalItems,
+        ...(finalSections.length ? { sections: finalSections } : {}),
+      });
       if (error) {
         setSaveError(error);
         return;
       }
       setPublished(new Map(finalItems.map((item) => [item.id, item])));
       setPublishedReference(finalReference);
+      setSections(finalSections);
+      setPublishedSections(JSON.stringify(finalSections));
       setReference(finalReference);
       setItems(finalItems);
       setEditing(new Set());
@@ -241,7 +288,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   const handleCopyFormatted = async () => {
     setExportOpen(false);
     try {
-      await navigator.clipboard.writeText(formatFichamentoText(book, reference, visibleItems));
+      await navigator.clipboard.writeText(formatFichamentoText(book, reference, visibleItems, sections));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -269,7 +316,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
       setSaveError('O navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente de novo.');
       return;
     }
-    page.document.write(formatFichamentoHtml(book, reference, visibleItems));
+    page.document.write(formatFichamentoHtml(book, reference, visibleItems, sections));
     page.document.close();
     page.focus();
     page.print();
@@ -344,6 +391,19 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
               aria-label="Texto da citação ou anotação"
               className="w-full min-w-0 flex-1 rounded-md border border-stone-800 bg-stone-900 px-3 py-2 text-sm leading-relaxed text-stone-200 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none"
             />
+            {sortedSections.length > 0 && (
+              <select
+                value={item.sectionId && sortedSections.some((section) => section.id === item.sectionId) ? item.sectionId : ''}
+                onChange={(e) => setItemSection(item.id, e.target.value)}
+                aria-label="Texto do sumário"
+                className="w-full rounded-md border border-stone-800 bg-stone-900 px-2 py-2 text-xs text-stone-300 focus:border-amber-500/60 focus:outline-none sm:w-44"
+              >
+                <option value="">{autoSectionLabel(item.page)}</option>
+                {sortedSections.map((section) => (
+                  <option key={section.id} value={section.id}>{section.title || 'Sem título'}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="flex shrink-0 flex-col items-center">
             {status !== 'new' && <IconAction icon={Check} title="Concluir" onClick={() => finishEditing(item.id)} />}
@@ -431,13 +491,93 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
               />
             </div>
 
+            {/* Sumário: texts of a collection, each starting at a page */}
+            <div className="space-y-2">
+              {sections.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={addSection}
+                  className="flex items-center gap-1.5 text-[11px] text-stone-400 hover:text-amber-300 cursor-pointer"
+                >
+                  <ListTree size={13} />
+                  Adicionar sumário (livro de contos, ensaios ou coletânea)
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryOpen((open) => !open)}
+                    aria-expanded={summaryOpen}
+                    className="flex w-full items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-400/90 cursor-pointer"
+                  >
+                    <ListTree size={13} />
+                    Sumário ({sections.length} {sections.length === 1 ? 'texto' : 'textos'})
+                    <ChevronDown size={14} className={`ml-auto transition-transform ${summaryOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {summaryOpen && (
+                    <div className="space-y-2 rounded-xl border border-stone-800 bg-stone-950/40 p-3">
+                      {sections.map((section) => (
+                        <div key={section.id} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                          <input
+                            type="number"
+                            min={0}
+                            value={section.startPage || ''}
+                            onChange={(e) => updateSection(section.id, { startPage: Number(e.target.value) || 0 })}
+                            placeholder="Pág."
+                            aria-label="Página em que o texto começa"
+                            className="w-20 rounded-md border border-stone-800 bg-stone-900 px-2 py-1.5 font-mono text-xs text-amber-300 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={section.title}
+                            onChange={(e) => updateSection(section.id, { title: e.target.value })}
+                            placeholder="Título do texto"
+                            aria-label="Título do texto"
+                            className="min-w-0 flex-1 rounded-md border border-stone-800 bg-stone-900 px-2.5 py-1.5 text-xs text-stone-200 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none"
+                          />
+                          <input
+                            type="text"
+                            value={section.author || ''}
+                            onChange={(e) => updateSection(section.id, { author: e.target.value })}
+                            placeholder="Autor (se outro)"
+                            aria-label="Autor do texto, se for outro"
+                            className="w-full rounded-md border border-stone-800 bg-stone-900 px-2.5 py-1.5 text-xs text-stone-200 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none sm:w-44"
+                          />
+                          <IconAction icon={Trash2} title="Tirar do sumário" danger onClick={() => setSections((prev) => prev.filter((other) => other.id !== section.id))} />
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={addSection}
+                        className="flex items-center gap-1.5 pt-1 text-[11px] text-amber-400/90 hover:text-amber-300 cursor-pointer"
+                      >
+                        <Plus size={12} />
+                        Adicionar texto
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
             {/* Lista de Trechos e Citações (Página / Texto) */}
             <section className="space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-400/90">
                 Anotações e Citações ({visibleCount})
               </h3>
 
-              {visibleItems.length > 0 && <ol className="space-y-3">{visibleItems.map(renderItem)}</ol>}
+              {groups.map((group, groupIndex) => (
+                <div key={group.section?.id ?? `loose-${groupIndex}`} className="space-y-3">
+                  {group.section && (
+                    <div className="flex items-baseline gap-2 border-b border-amber-500/20 pb-1 pt-2">
+                      <h4 className="font-serif text-base font-bold text-stone-100">{group.section.title}</h4>
+                      {group.section.author && <span className="text-xs italic text-stone-400">{group.section.author}</span>}
+                      <span className="ml-auto font-mono text-[11px] text-stone-500">p. {group.section.startPage}</span>
+                    </div>
+                  )}
+                  <ol className="space-y-3">{group.items.map((item) => renderItem(item, numbers.get(item.id) ?? 0))}</ol>
+                </div>
+              ))}
 
             </section>
           </fieldset>
@@ -474,8 +614,8 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
                     {[
                       { label: 'Copiar texto', icon: Copy, action: () => void handleCopyFormatted() },
                       { label: 'PDF (imprimir)', icon: FileText, action: printAsPdf },
-                      { label: 'Markdown (.md)', icon: Download, action: () => downloadFile(formatFichamentoMarkdown(book, reference, visibleItems), 'md', 'text/markdown') },
-                      { label: 'Texto (.txt)', icon: Download, action: () => downloadFile(formatFichamentoText(book, reference, visibleItems), 'txt', 'text/plain') },
+                      { label: 'Markdown (.md)', icon: Download, action: () => downloadFile(formatFichamentoMarkdown(book, reference, visibleItems, sections), 'md', 'text/markdown') },
+                      { label: 'Texto (.txt)', icon: Download, action: () => downloadFile(formatFichamentoText(book, reference, visibleItems, sections), 'txt', 'text/plain') },
                     ].map(({ label, icon: Icon, action }) => (
                       <button
                         key={label}

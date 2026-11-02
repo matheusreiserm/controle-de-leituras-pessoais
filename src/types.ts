@@ -22,11 +22,21 @@ export interface FichamentoItem {
   id: string;
   page: string;  // e.g. "p. 45" or "102-108"
   text: string;  // quote, excerpt, or notes
+  sectionId?: string; // Text of the table of contents chosen by hand; otherwise found by page
+}
+
+/** One text of a collection (story, essay...), from the book's table of contents. */
+export interface FichamentoSection {
+  id: string;
+  title: string;
+  author?: string;   // When the text is by someone other than the book's author
+  startPage: number; // Page where the text begins
 }
 
 export interface FichamentoData {
   reference?: string; // Cabeçalho simples para a referência bibliográfica
   items: FichamentoItem[];
+  sections?: FichamentoSection[]; // Optional table of contents for collections
 }
 
 export interface Book {
