@@ -60,3 +60,15 @@ test('copied text lists the quotes under the reference', () => {
   assert.match(text, /^FICHAMENTO: PEQUEÑOS COMBATIENTES\nAutor: Raquel Robles\nReferência: ROBLES\. 2013\./);
   assert.match(text, /\[11\]\nYo sabía que estábamos en guerra\.\n\n\[#2\]\nSem página\n\n$/);
 });
+
+test('exports keep the quotes in order, as Markdown, printable HTML and a safe file name', async () => {
+  const { formatFichamentoMarkdown, formatFichamentoHtml, fichamentoFileName } = await import('../src/utils/fichamento');
+  const book = { title: 'Do Assassínio como uma das Belas Artes', author: 'Thomas De Quincey' };
+  const items = [{ id: 'a', page: '6-7', text: 'Primeira linha\nsegunda <linha>' }, { id: 'b', page: '', text: 'Sem página' }];
+  const md = formatFichamentoMarkdown(book, 'QUINCEY. 1827.', items);
+  assert.match(md, /^# Do Assassínio como uma das Belas Artes\n\n\*\*Thomas De Quincey\*\*\n\nQUINCEY\. 1827\.\n\n## p\. 6-7\n\n> Primeira linha\n> segunda <linha>\n\n## #2\n\n> Sem página\n\n$/);
+  const html = formatFichamentoHtml(book, '', items);
+  assert.match(html, /segunda &lt;linha&gt;/);
+  assert.ok(html.indexOf('<h2>p. 6-7</h2>') < html.indexOf('<h2>#2</h2>'));
+  assert.equal(fichamentoFileName(book.title), 'fichamento-do-assassinio-como-uma-das-belas-artes');
+});
