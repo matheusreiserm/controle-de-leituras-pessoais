@@ -89,3 +89,54 @@ export function formatFichamentoText(
   });
   return output;
 }
+
+export function formatFichamentoMarkdown(
+  book: { title: string; author: string },
+  reference: string,
+  items: FichamentoItem[],
+): string {
+  let output = `# ${book.title}\n\n**${book.author}**\n\n`;
+  if (reference.trim()) output += `${reference.trim()}\n\n`;
+  items.forEach((item, index) => {
+    if (!item.text.trim()) return;
+    output += `## ${item.page.trim() ? pageLabel(item.page) : `#${index + 1}`}\n\n`;
+    output += item.text.trim().split('\n').map((line) => `> ${line}`.trimEnd()).join('\n') + '\n\n';
+  });
+  return output;
+}
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+
+/** Standalone page laid out for printing or "Salvar como PDF". */
+export function formatFichamentoHtml(
+  book: { title: string; author: string },
+  reference: string,
+  items: FichamentoItem[],
+): string {
+  const quotes = items
+    .filter((item) => item.text.trim())
+    .map((item, index) => `<section><h2>${escapeHtml(item.page.trim() ? pageLabel(item.page) : `#${index + 1}`)}</h2><blockquote>${escapeHtml(item.text.trim()).replace(/\n/g, '<br>')}</blockquote></section>`)
+    .join('\n');
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Fichamento — ${escapeHtml(book.title)}</title>
+<style>
+  @page { margin: 2cm; }
+  body { font-family: Georgia, 'Times New Roman', serif; color: #222; line-height: 1.55; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .2rem; }
+  .author { font-style: italic; margin: 0 0 1rem; }
+  .reference { font-family: ui-monospace, monospace; font-size: .85rem; color: #555; border-bottom: 1px solid #ccc; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+  h2 { font-family: ui-monospace, monospace; font-size: .8rem; color: #8a5a14; margin: 1.4rem 0 .3rem; }
+  blockquote { margin: 0; padding-left: 1rem; border-left: 2px solid #d9b77e; }
+  section { break-inside: avoid; }
+</style></head><body>
+<h1>${escapeHtml(book.title)}</h1><p class="author">${escapeHtml(book.author)}</p>
+${reference.trim() ? `<p class="reference">${escapeHtml(reference.trim())}</p>` : ''}
+${quotes}
+</body></html>`;
+}
+
+/** File name without extension, e.g. "fichamento-do-assassinio-como-uma-das-belas-artes". */
+export function fichamentoFileName(title: string): string {
+  const slug = title.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return `fichamento-${slug || 'livro'}`;
+}

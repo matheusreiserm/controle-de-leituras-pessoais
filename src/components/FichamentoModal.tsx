@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Book, FichamentoData, FichamentoItem } from '../types';
-import { X, Plus, Trash2, FileText, Copy, Check, BookOpen, Pencil, Undo2, type LucideIcon } from 'lucide-react';
+import { X, Plus, Trash2, FileText, Copy, Check, BookOpen, Pencil, Undo2, Download, type LucideIcon } from 'lucide-react';
 import {
   createEmptyItem,
+  fichamentoFileName,
+  formatFichamentoHtml,
+  formatFichamentoMarkdown,
   formatFichamentoText,
   hasContent,
   itemStatus,
@@ -108,6 +111,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   const [removed, setRemoved] = useState<Set<string>>(() => new Set());
   const [focusRequest, setFocusRequest] = useState<{ id: string; field: 'page' | 'text' } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [justPublished, setJustPublished] = useState(false);
@@ -235,6 +239,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   shortcuts.current = { close: handleClose, publish: () => void handlePublish() };
 
   const handleCopyFormatted = async () => {
+    setExportOpen(false);
     try {
       await navigator.clipboard.writeText(formatFichamentoText(book, reference, visibleItems));
       setCopied(true);
@@ -242,6 +247,32 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
     } catch {
       setSaveError('Não foi possível copiar automaticamente. Selecione o texto e copie manualmente.');
     }
+  };
+
+  const downloadFile = (content: string, extension: 'md' | 'txt', type: string) => {
+    setExportOpen(false);
+    const url = URL.createObjectURL(new Blob([content], { type: `${type};charset=utf-8` }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${fichamentoFileName(book.title)}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  // A print-ready page; the browser's print dialog offers "Salvar como PDF".
+  const printAsPdf = () => {
+    setExportOpen(false);
+    const page = window.open('', '_blank');
+    if (!page) {
+      setSaveError('O navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente de novo.');
+      return;
+    }
+    page.document.write(formatFichamentoHtml(book, reference, visibleItems));
+    page.document.close();
+    page.focus();
+    page.print();
   };
 
   const renderItem = (item: FichamentoItem, index: number) => {
@@ -408,29 +439,60 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
 
               {visibleItems.length > 0 && <ol className="space-y-3">{visibleItems.map(renderItem)}</ol>}
 
-              <button
-                type="button"
-                onClick={addItem}
-                className="w-full py-2.5 border border-dashed border-stone-700 hover:border-amber-500/60 bg-stone-950/40 hover:bg-amber-500/5 text-amber-400/90 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Plus size={14} />
-                <span>Adicionar Novo Trecho / Citação</span>
-              </button>
             </section>
           </fieldset>
         </div>
 
         {/* Footer Actions */}
         <div className="px-6 py-3.5 bg-stone-950/90 border-t border-stone-800 flex flex-wrap items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => void handleCopyFormatted()}
-            className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="Copiar texto do fichamento formatado"
-          >
-            {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-            <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Always in view: no scrolling to the end of a long fichamento to add a quote. */}
+            <button
+              type="button"
+              onClick={addItem}
+              disabled={isSaving}
+              className="px-3 py-1.5 border border-dashed border-amber-500/60 hover:bg-amber-500/10 text-amber-400 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Plus size={14} />
+              <span>Nova citação</span>
+            </button>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportOpen((open) => !open)}
+                aria-expanded={exportOpen}
+                className="px-3 py-1.5 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {copied ? <Check size={14} className="text-emerald-400" /> : <Download size={14} />}
+                <span>{copied ? 'Copiado!' : 'Exportar'}</span>
+              </button>
+              {exportOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setExportOpen(false)} />
+                  <div role="menu" className="absolute bottom-full left-0 z-20 mb-2 w-52 overflow-hidden rounded-xl border border-stone-700 bg-stone-900 py-1 shadow-2xl">
+                    {[
+                      { label: 'Copiar texto', icon: Copy, action: () => void handleCopyFormatted() },
+                      { label: 'PDF (imprimir)', icon: FileText, action: printAsPdf },
+                      { label: 'Markdown (.md)', icon: Download, action: () => downloadFile(formatFichamentoMarkdown(book, reference, visibleItems), 'md', 'text/markdown') },
+                      { label: 'Texto (.txt)', icon: Download, action: () => downloadFile(formatFichamentoText(book, reference, visibleItems), 'txt', 'text/plain') },
+                    ].map(({ label, icon: Icon, action }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        role="menuitem"
+                        onClick={action}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-stone-300 hover:bg-stone-800 hover:text-amber-300 cursor-pointer"
+                      >
+                        <Icon size={14} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
