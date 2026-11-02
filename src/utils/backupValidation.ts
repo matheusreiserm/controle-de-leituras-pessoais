@@ -186,6 +186,7 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
       readingYear,
       yearBookId: typeof item.yearBookId === 'number' ? item.yearBookId : undefined,
       coverUrl: typeof item.coverUrl === 'string' ? item.coverUrl.trim() : undefined,
+      coverFallback: typeof item.coverFallback === 'string' && item.coverFallback.startsWith('data:image/') ? item.coverFallback : undefined,
       genre: typeof item.genre === 'string' && item.genre.trim() ? item.genre.trim() : undefined,
       notes: typeof item.notes === 'string' && item.notes.trim() ? item.notes.trim() : undefined,
       status,

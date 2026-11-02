@@ -84,6 +84,7 @@ export const BookCard: React.FC<BookCardProps> = ({
         >
           <CoverImage
             src={book.coverUrl}
+            fallbackSrc={book.coverFallback}
             alt={book.title}
             className="block w-full h-auto"
             fallback={

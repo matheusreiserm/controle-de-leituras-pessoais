@@ -12,9 +12,9 @@ interface DriveFile {
   appProperties?: Record<string, string>;
 }
 interface Result { success: boolean; message: string; fileId?: string; folderId?: string; books?: Book[] }
-type Request = (url: string, init?: RequestInit) => Promise<Response>;
+export type Request = (url: string, init?: RequestInit) => Promise<Response>;
 
-async function connection(interactive: boolean): Promise<Request> {
+export async function connection(interactive: boolean): Promise<Request> {
   let token = getAccessToken();
   if (!token && interactive) token = (await loginWithGoogle()).accessToken;
   if (!token) throw new Error('Backup aguardando autorização do Drive. Use Exportar para o Drive para reconectar.');
@@ -39,7 +39,7 @@ async function connection(interactive: boolean): Promise<Request> {
   };
 }
 
-async function list(request: Request, query: string): Promise<DriveFile[]> {
+export async function list(request: Request, query: string): Promise<DriveFile[]> {
   const files: DriveFile[] = [];
   let pageToken = '';
   do {
