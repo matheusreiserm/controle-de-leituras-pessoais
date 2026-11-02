@@ -75,6 +75,7 @@ export const CoverHighlightModal: React.FC<CoverHighlightModalProps> = ({
           <div className="relative group w-56 max-w-full rounded-lg overflow-hidden shadow-2xl border border-stone-700/60 transition-transform duration-300 hover:scale-105">
             <CoverImage
               src={book.coverUrl}
+              fallbackSrc={book.coverFallback}
               alt={book.title}
               className="block w-full h-auto"
               fallback={

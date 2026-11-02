@@ -37,7 +37,7 @@ beforeEach(() => {
       if (method === 'PATCH') return json({ id: 'saved' });
       created.push({ url: url.href, method, headers: init.headers, body: init.body });
       if (url.searchParams.get('uploadType') === 'resumable') return new Response(null, { status: 200, headers: { Location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=test' } });
-      content.saved = corruptUpload ? '' : method === 'PUT' ? init.body : init.body.split('\r\n\r\n')[2]?.split('\r\n--')[0] || '';
+      content.saved = corruptUpload ? '' : method === 'PUT' ? init.body : typeof init.body === 'string' ? init.body.split('\r\n\r\n')[2]?.split('\r\n--')[0] || '' : '';
       return json({ id: 'saved' });
     }
     const q = url.searchParams.get('q') || ''; queryLog.push(q);
@@ -136,4 +136,15 @@ test('expiry on a later Drive request renews authorization and retries that requ
   const result = await importFromGoogleDrive();
   assert.equal(result.success, true, result.message);
   assert.equal(token, 'renewed');
+});
+
+test('a cover goes to the app folder in Drive, opened to anyone with the link', async () => {
+  const { uploadCoverToDrive } = await import('../src/lib/driveCovers');
+  const url = await uploadCoverToDrive(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/webp' }));
+  assert.equal(url, 'https://lh3.googleusercontent.com/d/saved=w1000');
+  const upload = created.find((call) => call.url.includes('uploadType=multipart'));
+  assert.ok(upload, 'multipart upload sent');
+  assert.match(String(upload.headers['Content-Type']), /^multipart\/related; boundary=/);
+  const permission = created.find((call) => call.url.endsWith('/files/saved/permissions'));
+  assert.deepEqual(JSON.parse(permission.body), { role: 'reader', type: 'anyone' });
 });

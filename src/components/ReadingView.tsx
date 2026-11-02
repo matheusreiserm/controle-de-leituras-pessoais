@@ -68,6 +68,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
   const [format, setFormat] = useState<FormatType>('Físico');
   const [language, setLanguage] = useState<LanguageType>('Português');
   const [coverUrl, setCoverUrl] = useState('');
+  const [coverFallback, setCoverFallback] = useState<string | undefined>(undefined);
   const [coverPending, setCoverPending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -81,6 +82,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
     setFormat('Físico');
     setLanguage('Português');
     setCoverUrl('');
+    setCoverFallback(undefined);
     setCoverPending(false);
     setSaveError('');
     setIsAddModalOpen(true);
@@ -107,6 +109,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
       month: getCurrentMonthName(),
       status: 'reading',
       coverUrl: coverUrl.trim() || undefined,
+      coverFallback: coverUrl.trim() ? coverFallback : undefined,
     });
 
     if (error) { setSaveError(error); return; }
@@ -228,6 +231,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                   >
                     <CoverImage
                       src={book.coverUrl}
+                      fallbackSrc={book.coverFallback}
                       alt={book.title}
                       className="block w-full h-auto"
                       fallback={
@@ -468,7 +472,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                 </div>
               </div>
 
-              <CoverInput value={coverUrl} onChange={setCoverUrl} onPendingChange={setCoverPending} />
+              <CoverInput value={coverUrl} onChange={setCoverUrl} onFallbackChange={setCoverFallback} onPendingChange={setCoverPending} />
               {saveError && <p role="alert" className="text-xs text-rose-400">{saveError}</p>}
 
               <div className="flex justify-end gap-2 pt-4 border-t border-stone-800">

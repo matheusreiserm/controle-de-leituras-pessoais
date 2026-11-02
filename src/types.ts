@@ -46,6 +46,7 @@ export interface Book {
   rating: number;          // 1 to 6 stars
   dataSource?: string;    // Original catalog provenance
   coverUrl?: string;       // Cover image URL or null
+  coverFallback?: string;  // Small embedded copy shown if coverUrl (a Drive link) cannot load
   notes?: string;          // Optional user notes
   genre?: string;          // Optional literary genre
   status?: 'read' | 'reading' | 'wishlist'; // Status of reading (default: 'read')

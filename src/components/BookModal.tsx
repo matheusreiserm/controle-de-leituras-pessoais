@@ -38,6 +38,7 @@ export const BookModal: React.FC<BookModalProps> = ({
   const [language, setLanguage] = useState<LanguageType>('Português');
   const [rating, setRating] = useState<number>(5);
   const [coverUrl, setCoverUrl] = useState('');
+  const [coverFallback, setCoverFallback] = useState<string | undefined>(undefined);
   const [coverPending, setCoverPending] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -55,6 +56,7 @@ export const BookModal: React.FC<BookModalProps> = ({
       setLanguage(initialData.language === ('Francês' as any) ? 'Inglês' : initialData.language);
       setRating(initialData.rating);
       setCoverUrl(initialData.coverUrl || '');
+      setCoverFallback(initialData.coverFallback);
 
     } else {
       // New book: reading in the current month; publication year and pages stay empty until typed.
@@ -69,6 +71,7 @@ export const BookModal: React.FC<BookModalProps> = ({
       setLanguage('Português');
       setRating(5);
       setCoverUrl('');
+      setCoverFallback(undefined);
 
     }
   }, [initialData, isOpen]);
@@ -98,6 +101,7 @@ export const BookModal: React.FC<BookModalProps> = ({
         language,
         rating,
         coverUrl: coverUrl.trim(),
+        coverFallback: coverUrl.trim() ? coverFallback : undefined,
       });
       if (error) {
         setSaveError(error);
@@ -335,7 +339,7 @@ export const BookModal: React.FC<BookModalProps> = ({
             </div>
           </div>
 
-          <CoverInput value={coverUrl} onChange={setCoverUrl} onPendingChange={setCoverPending} />
+          <CoverInput value={coverUrl} onChange={setCoverUrl} onFallbackChange={setCoverFallback} onPendingChange={setCoverPending} />
 
           {/* Modal Footer Actions */}
           <div className="pt-4 border-t border-stone-200 dark:border-stone-800 flex items-center justify-end gap-2">

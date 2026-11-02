@@ -1,14 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { fetchCoverBlob, imageToCover, imageToCoverBlob, resolveCoverUrl } from '../utils/covers';
-import { uploadCover } from '../lib/coverStorage';
+import { uploadCoverToDrive } from '../lib/driveCovers';
 
 interface Props {
   value: string;
   onChange: (cover: string) => void;
+  /** Small embedded copy kept next to a Drive cover, shown if the Drive link ever stops loading. */
+  onFallbackChange?: (fallback: string | undefined) => void;
   onPendingChange: (pending: boolean) => void;
 }
 
-export function CoverInput({ value, onChange, onPendingChange }: Props) {
+export function CoverInput({ value, onChange, onFallbackChange, onPendingChange }: Props) {
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -21,18 +23,21 @@ export function CoverInput({ value, onChange, onPendingChange }: Props) {
     setBusy(true); setError('');
     try {
       const blob = typeof source === 'string' ? await fetchCoverBlob(source) : source;
-      let cover: string;
+      const reduced = await imageToCover(blob);
+      let cover = reduced;
+      let fallback: string | undefined;
       let notice = '';
       try {
-        cover = await uploadCover(await imageToCoverBlob(blob));
+        cover = await uploadCoverToDrive(await imageToCoverBlob(blob));
+        fallback = reduced;
       } catch (uploadError) {
-        // Storage unavailable (not enabled yet, offline, signed out): keep the old embedded path so the cover is not lost.
-        console.warn('Cover upload failed, embedding instead:', uploadError);
-        cover = await imageToCover(blob);
-        notice = 'Não foi possível enviar a capa em alta resolução; ela foi salva em tamanho reduzido junto com o livro.';
+        // Drive not authorized or offline: keep the reduced copy so the cover is not lost.
+        console.warn('Cover upload to Drive failed, embedding instead:', uploadError);
+        const reason = uploadError instanceof Error ? uploadError.message : '';
+        notice = `A capa foi salva em tamanho reduzido; o envio para o Drive falhou.${reason ? ` ${reason}` : ''}`;
       }
       if (request.current !== attempt) return;
-      onChange(cover); setAddress(''); setError(notice);
+      onChange(cover); onFallbackChange?.(fallback); setAddress(''); setError(notice);
     } catch (err) {
       if (request.current === attempt) setError(err instanceof Error ? err.message : 'Não foi possível preparar a capa.');
     } finally { if (request.current === attempt) setBusy(false); }
@@ -60,8 +65,8 @@ export function CoverInput({ value, onChange, onPendingChange }: Props) {
     {value && <div className="flex items-center gap-3">
       <img key={value} src={resolveCoverUrl(value)} alt="Prévia da capa" className="w-16 h-24 object-contain rounded" />
       <div className="space-y-2 text-xs">
-        <p>{value.startsWith('data:') ? 'Imagem reduzida, incorporada ao livro e incluída no backup.' : /^https:\/\/firebasestorage\.googleapis\.com\//.test(value) ? 'Capa em alta resolução, guardada no Firebase Storage.' : /^\/?covers\//.test(value) ? 'Capa do catálogo, incluída no site.' : 'Capa antiga por link. Cole a URL acima para incorporar a imagem.'}</p>
-        <button type="button" disabled={busy} onClick={() => { onChange(''); setAddress(''); setError(''); }} className="text-rose-500 underline">Remover capa</button>
+        <p>{value.startsWith('data:') ? 'Imagem reduzida, incorporada ao livro e incluída no backup.' : /^https:\/\/lh3\.googleusercontent\.com\/d\//.test(value) ? 'Capa em alta resolução, guardada no seu Google Drive.' : /^\/?covers\//.test(value) ? 'Capa do catálogo, incluída no site.' : 'Capa antiga por link. Cole a URL acima para incorporar a imagem.'}</p>
+        <button type="button" disabled={busy} onClick={() => { onChange(''); onFallbackChange?.(undefined); setAddress(''); setError(''); }} className="text-rose-500 underline">Remover capa</button>
       </div>
     </div>}
   </div>;
