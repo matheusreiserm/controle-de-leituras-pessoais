@@ -69,6 +69,33 @@ test('exports keep the quotes in order, as Markdown, printable HTML and a safe f
   assert.match(md, /^# Do Assassínio como uma das Belas Artes\n\n\*\*Thomas De Quincey\*\*\n\nQUINCEY\. 1827\.\n\n## p\. 6-7\n\n> Primeira linha\n> segunda <linha>\n\n## #2\n\n> Sem página\n\n$/);
   const html = formatFichamentoHtml(book, '', items);
   assert.match(html, /segunda &lt;linha&gt;/);
-  assert.ok(html.indexOf('<h2>p. 6-7</h2>') < html.indexOf('<h2>#2</h2>'));
+  assert.ok(html.indexOf('<h3>p. 6-7</h3>') < html.indexOf('<h3>#2</h3>'));
   assert.equal(fichamentoFileName(book.title), 'fichamento-do-assassinio-como-uma-das-belas-artes');
+});
+
+test('a table of contents groups quotes by text through their page, with a manual choice winning', async () => {
+  const { sectionOf, groupBySection, cleanSections, formatFichamentoMarkdown, formatFichamentoText, itemStatus } = await import('../src/utils/fichamento');
+  const sections = cleanSections([
+    { id: 's3', title: 'Meditação a respeito de um cabo de vassoura ', startPage: 39 },
+    { id: 's1', title: 'Prefácio à guisa de antepasto', startPage: 7, author: 'Tradutor ' },
+    { id: 's2', title: 'Modesta proposta', startPage: 17 },
+    { id: 'blank', title: '  ', startPage: 50 },
+  ]);
+  assert.deepEqual(sections.map((s) => [s.id, s.startPage, s.author]), [['s1', 7, 'Tradutor'], ['s2', 17, undefined], ['s3', 39, undefined]]);
+  assert.equal(sectionOf({ page: 'p. 23' }, sections)?.id, 's2');
+  assert.equal(sectionOf({ page: '39-40' }, sections)?.id, 's3');
+  assert.equal(sectionOf({ page: '3' }, sections), undefined);
+  assert.equal(sectionOf({ page: '23', sectionId: 's3' }, sections)?.id, 's3');
+  const items = [
+    { id: 'a', page: '40', text: 'Vassoura' },
+    { id: 'b', page: '2', text: 'Antes de tudo' },
+    { id: 'c', page: '20', text: 'Proposta' },
+  ];
+  assert.deepEqual(groupBySection(items, sections).map((g) => [g.section?.id, g.items.map((i) => i.id)]), [[undefined, ['b']], ['s2', ['c']], ['s3', ['a']]]);
+  assert.deepEqual(groupBySection(items, []).map((g) => g.items.length), [3]);
+  const md = formatFichamentoMarkdown({ title: 'Modesta proposta', author: 'Jonathan Swift' }, '', items, sections);
+  assert.ok(md.indexOf('## Modesta proposta') < md.indexOf('### p. 20') && md.indexOf('### p. 20') < md.indexOf('## Meditação'));
+  assert.match(formatFichamentoText({ title: 'X', author: 'Y' }, '', items, sections), /== Modesta proposta \(p\. 17\) ==/);
+  const published = new Map([['c', items[2]]]);
+  assert.equal(itemStatus({ ...items[2], sectionId: 's3' }, published, new Set()), 'edited');
 });

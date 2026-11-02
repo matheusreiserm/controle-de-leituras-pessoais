@@ -165,9 +165,24 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
             page: typeof fi.page === 'string' ? fi.page : '',
             text: typeof fi.text === 'string' ? fi.text : '',
             type: fi.type === 'citacao' || fi.type === 'resumo' || fi.type === 'referencia' ? fi.type : 'citacao',
+            ...(typeof fi.sectionId === 'string' && fi.sectionId ? { sectionId: fi.sectionId } : {}),
           }))
         : [];
-      fichamento = { items, ...(typeof item.fichamento.reference === 'string' ? { reference: item.fichamento.reference } : {}) };
+      const sections = Array.isArray(item.fichamento.sections)
+        ? item.fichamento.sections
+            .filter((section: any) => section && typeof section.title === 'string' && section.title.trim() && typeof section.id === 'string')
+            .map((section: any) => ({
+              id: section.id,
+              title: section.title.trim(),
+              startPage: Number.isFinite(Number(section.startPage)) ? Number(section.startPage) : 0,
+              ...(typeof section.author === 'string' && section.author.trim() ? { author: section.author.trim() } : {}),
+            }))
+        : [];
+      fichamento = {
+        items,
+        ...(typeof item.fichamento.reference === 'string' ? { reference: item.fichamento.reference } : {}),
+        ...(sections.length ? { sections } : {}),
+      };
     }
 
     const validatedBook: Book = {
