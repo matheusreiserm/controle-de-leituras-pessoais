@@ -6,8 +6,8 @@ const API = 'https://www.googleapis.com/drive/v3/files';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files';
 const PREFIX = 'controle_leituras_backup_';
 const RETENTION = 4;
-const WEEK = 7 * 24 * 60 * 60 * 1000;
-interface DriveFile {
+const DAY = 24 * 60 * 60 * 1000;
+export interface DriveFile {
   id: string; name: string; modifiedTime?: string; size?: string;
   appProperties?: Record<string, string>;
 }
@@ -106,6 +106,24 @@ async function fingerprint(books: Book[]) {
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * Verified backups that can go: all but the newest RETENTION ones and the newest one of each month,
+ * which are kept for good (about 1 MB a month), so an old good copy survives a problem noticed late.
+ */
+export function backupsToRetire(verified: DriveFile[]): DriveFile[] {
+  const newestFirst = [...verified].sort((a, b) => (b.modifiedTime || '').localeCompare(a.modifiedTime || '') || b.name.localeCompare(a.name));
+  const keep = new Set(newestFirst.slice(0, RETENTION).map((file) => file.id));
+  const months = new Set<string>();
+  for (const file of newestFirst) {
+    const month = (file.modifiedTime || '').slice(0, 7);
+    if (month && !months.has(month)) {
+      months.add(month);
+      keep.add(file.id);
+    }
+  }
+  return newestFirst.filter((file) => !keep.has(file.id));
+}
+
 let exportInProgress = false;
 export async function exportToGoogleDrive(books: Book[], interactive = true, automatic = false): Promise<Result> {
   if (exportInProgress) return { success: false, message: 'Já há um backup em andamento. Aguarde a conclusão.' };
@@ -121,8 +139,8 @@ export async function exportToGoogleDrive(books: Book[], interactive = true, aut
     if (latest?.appProperties?.contentHash === hash && latest.appProperties.verified === 'true') {
       return { success: true, message: 'Backup ignorado: o acervo não mudou desde a última versão verificada.', folderId };
     }
-    if (automatic && latest?.modifiedTime && latest.appProperties?.verified === 'true' && Date.now() - Date.parse(latest.modifiedTime) < WEEK) {
-      return { success: true, message: 'Backup automático aguardando o intervalo semanal.', folderId };
+    if (automatic && latest?.modifiedTime && latest.appProperties?.verified === 'true' && Date.now() - Date.parse(latest.modifiedTime) < DAY) {
+      return { success: true, message: 'Backup automático aguardando o intervalo diário.', folderId };
     }
     const name = `${PREFIX}${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     const metadata = { name, parents: [folderId], mimeType: 'application/json', appProperties: { contentHash: hash, verified: 'false' } };
@@ -159,7 +177,7 @@ export async function exportToGoogleDrive(books: Book[], interactive = true, aut
     try {
       // Preserve legacy/manual backups; only retire versions verified by this app.
       const verified = (await backups(request, folderId)).filter(file => file.appProperties?.verified === 'true');
-      for (const file of verified.filter(file => file.id !== saved.id).slice(RETENTION - 1)) {
+      for (const file of backupsToRetire(verified).filter(file => file.id !== saved.id)) {
         await request(`${API}/${encodeURIComponent(file.id)}`, { method: 'DELETE' });
       }
     } catch { retentionWarning = ' As cópias antigas foram mantidas porque a limpeza não foi concluída.'; }

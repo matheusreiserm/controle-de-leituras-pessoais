@@ -99,3 +99,57 @@ test('a table of contents groups quotes by text through their page, with a manua
   const published = new Map([['c', items[2]]]);
   assert.equal(itemStatus({ ...items[2], sectionId: 's3' }, published, new Set()), 'edited');
 });
+
+test('publishing over an unchanged cloud copy saves exactly what was edited', async () => {
+  const { mergeFichamento } = await import('../src/utils/fichamento');
+  const base = { reference: 'REF', items: saved };
+  // The cloud returns the same content with its keys in another order.
+  const remote = { items: saved.map(({ text, page, id }) => ({ text, page, id })), reference: 'REF' };
+  const local = { reference: 'REF', items: [...saved.slice(0, 2), { id: 'd', page: '20', text: 'Novo trecho.' }] };
+  assert.deepEqual(mergeFichamento(base, local, remote), { fichamento: local, merged: false });
+});
+
+test('quotes published from another device meanwhile are kept alongside the local ones', async () => {
+  const { mergeFichamento } = await import('../src/utils/fichamento');
+  const base = { reference: 'REF', items: saved };
+  const remote = {
+    reference: 'REF',
+    items: [
+      { ...saved[0], text: 'Corrigido no celular.' }, // edited there, untouched here
+      saved[1],                                         // deleted here, untouched there
+      { ...saved[2], text: 'Também editado lá.' },      // deleted here, but edited there
+      { id: 'phone', page: '30', text: 'Adicionado no celular.' },
+    ],
+  };
+  const local = {
+    reference: 'REF',
+    items: [saved[0], { id: 'pc', page: '25', text: 'Adicionado no computador.' }],
+  };
+  const { fichamento, merged } = mergeFichamento(base, local, remote);
+  assert.equal(merged, true);
+  assert.deepEqual(fichamento.items.map((item) => item.text), [
+    'Corrigido no celular.',
+    'Adicionado no computador.',
+    'Também editado lá.',
+    'Adicionado no celular.',
+  ]);
+  assert.equal(fichamento.reference, 'REF');
+});
+
+test('a local edit wins over the other device, and over its deletion', async () => {
+  const { mergeFichamento } = await import('../src/utils/fichamento');
+  const base = { reference: 'REF', items: saved, sections: [{ id: 's', title: 'Conto', startPage: 1 }] };
+  const remote = { reference: 'OUTRA', items: [{ ...saved[0], text: 'Versão do celular.' }] };
+  const local = {
+    reference: 'REF',
+    items: [{ ...saved[0], text: 'Versão do computador.' }, { ...saved[1], page: '14' }, saved[2]],
+    sections: [{ id: 's', title: 'Conto', startPage: 1 }],
+  };
+  const { fichamento } = mergeFichamento(base, local, remote);
+  // b was edited here (kept despite the deletion there); c was untouched here and deleted there.
+  assert.deepEqual(fichamento.items.map((item) => item.id), ['a', 'b']);
+  assert.equal(fichamento.items[0].text, 'Versão do computador.');
+  // Reference and table of contents untouched here: the other device's version stands (no sections).
+  assert.equal(fichamento.reference, 'OUTRA');
+  assert.equal(fichamento.sections, undefined);
+});

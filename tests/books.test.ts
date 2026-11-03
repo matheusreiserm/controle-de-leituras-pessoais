@@ -34,3 +34,22 @@ test('restoring keeps the table of contents and the text chosen for each quote',
   assert.deepEqual(restored.books?.[0].fichamento?.sections, fichamento.sections);
   assert.equal(restored.books?.[0].fichamento?.items[0].sectionId, 's2');
 });
+
+test('a backup round trip keeps every field of every book, nothing added or dropped', () => {
+  const extra = {
+    ...INITIAL_BOOKS[1],
+    coverUrl: 'https://lh3.googleusercontent.com/d/abc=w1000',
+    coverFallback: 'data:image/webp;base64,Y292ZXI=',
+    genre: 'Romance',
+    notes: 'Lido em voz alta.',
+    fichamento: {
+      reference: 'REF',
+      items: [{ id: 'q1', page: '12', text: 'Trecho.' }, { id: 'q2', page: 'p. xiv', text: 'Prefácio.', sectionId: 's1' }],
+      sections: [{ id: 's1', title: 'Prefácio', startPage: 0, author: 'Tradutora' }],
+    },
+  };
+  const original = [...INITIAL_BOOKS.slice(2), extra];
+  const restored = validateBackupPayload(JSON.parse(JSON.stringify(createBackupPayload(original))));
+  assert.equal(restored.isValid, true, restored.error);
+  assert.deepEqual(JSON.parse(JSON.stringify(restored.books)), JSON.parse(JSON.stringify(original)));
+});

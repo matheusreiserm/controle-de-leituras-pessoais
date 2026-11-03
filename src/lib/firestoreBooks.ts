@@ -1,16 +1,17 @@
 import {
   collection,
   doc,
-  getDocs,
-  setDoc,
-  deleteDoc,
+  getDocsFromServer,
   onSnapshot,
   writeBatch,
   getDoc,
   runTransaction,
+  Transaction,
+  WriteBatch,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Book } from '../types';
+import { Book, FichamentoData } from '../types';
+import { mergeFichamento } from '../utils/fichamento';
 
 export enum OperationType {
   CREATE = 'create',
@@ -87,29 +88,44 @@ export function getUserBooksPath(userId: string): string {
   return `users/${userId}/books`;
 }
 
+/** Firestore rejects undefined anywhere in a document: drop it from objects and arrays, at any depth. */
+function withoutUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) return value.filter((entry) => entry !== undefined).map(withoutUndefined);
+  if (value && typeof value === 'object') {
+    const clean: Record<string, unknown> = {};
+    Object.entries(value).forEach(([key, entry]) => {
+      if (entry !== undefined) clean[key] = withoutUndefined(entry);
+    });
+    return clean;
+  }
+  return value;
+}
+
 /**
  * Sanitize a book object for Firestore storage (remove undefined fields which Firestore rejects).
  */
 export function sanitizeBookForFirestore(book: Book): Record<string, any> {
-  const clean: Record<string, any> = {};
-  Object.entries(book).forEach(([k, v]) => {
-    if (v !== undefined) {
-      clean[k] = v;
-    }
-  });
-  return clean;
+  return withoutUndefined(book) as Record<string, any>;
 }
 
+const MAX_DOCUMENT_BYTES = 900_000;
+const documentBytes = (data: unknown) => new TextEncoder().encode(JSON.stringify(data)).byteLength;
+
 export function prepareBookForWrite(book: Book): Record<string, any> {
-  const clean = sanitizeBookForFirestore(book);
-  // Leave room for Firestore field/path overhead within its 1 MiB document limit.
-  if (new TextEncoder().encode(JSON.stringify(clean)).byteLength > 900_000) {
+  let clean = sanitizeBookForFirestore(book);
+  // Leave room for Firestore field/path overhead within its 1 MiB document limit. The embedded copy of a
+  // Drive cover is only a fallback, so it gives way before the book is refused.
+  if (documentBytes(clean) > MAX_DOCUMENT_BYTES && clean.coverFallback) {
+    const { coverFallback: _fallback, ...rest } = clean;
+    clean = rest;
+  }
+  if (documentBytes(clean) > MAX_DOCUMENT_BYTES) {
     throw new Error(`O livro "${book.title}" ficou grande demais. Reduza a capa ou o fichamento antes de salvar.`);
   }
   return clean;
 }
 
-function stableSerialize(value: unknown): string {
+export function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
   if (value && typeof value === 'object') {
     const entries = Object.entries(value)
@@ -131,27 +147,29 @@ export function areBookCollectionsEquivalent(left: Book[], right: Book[]): boole
 }
 
 /**
- * Real-time listener for user's books stored in Firestore.
+ * Real-time listener for user's books stored in Firestore. `fromCache` marks a list the server has not
+ * confirmed yet (offline start): empty there means "not loaded", never "the cloud is empty". `changed`
+ * is false when only that confirmation (or a pending-write flag) changed.
  */
 export function subscribeUserBooks(
   userId: string,
-  onUpdate: (books: Book[]) => void,
+  onUpdate: (books: Book[], state: { fromCache: boolean; changed: boolean }) => void,
   onError?: (error: Error) => void
 ): () => void {
   const path = getUserBooksPath(userId);
   const booksCol = collection(db, 'users', userId, 'books');
 
+  // Metadata changes too, so the moment the server confirms a list already shown from cache is seen.
   const unsubscribe = onSnapshot(
     booksCol,
+    { includeMetadataChanges: true },
     (snapshot) => {
       const books: Book[] = [];
       snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        books.push(data as Book);
+        books.push(docSnap.data() as Book);
       });
-      // Sort by id ascending or yearBookId
       books.sort((a, b) => b.id - a.id);
-      onUpdate(books);
+      onUpdate(books, { fromCache: snapshot.metadata.fromCache, changed: snapshot.docChanges().length > 0 });
     },
     (error) => {
       console.error(`Error subscribing to ${path}:`, error);
@@ -169,13 +187,13 @@ export function subscribeUserBooks(
 }
 
 /**
- * Fetches all books for a user once from Firestore.
+ * Fetches all books for a user from the server (never from a local cache, which may be incomplete).
  */
 export async function fetchUserBooks(userId: string): Promise<Book[]> {
   const path = getUserBooksPath(userId);
   try {
     const booksCol = collection(db, 'users', userId, 'books');
-    const snapshot = await getDocs(booksCol);
+    const snapshot = await getDocsFromServer(booksCol);
     const books: Book[] = [];
     snapshot.forEach((docSnap) => {
       books.push(docSnap.data() as Book);
@@ -187,70 +205,111 @@ export async function fetchUserBooks(userId: string): Promise<Book[]> {
   }
 }
 
+const bookRef = (userId: string, bookId: number) => doc(db, 'users', userId, 'books', String(bookId));
+
+/** Readings shifted by an insertion, move or removal: only their two number fields change. */
+type ShiftedReading = Pick<Book, 'id' | 'yearBookId' | 'monthId'>;
+// A transaction or batch takes up to 500 writes; a year of readings stays far below that.
+const MAX_SHIFTED_PER_WRITE = 450;
+
+function updateNumbers(target: Transaction | WriteBatch, userId: string, shifted: ShiftedReading[]) {
+  shifted.forEach((book) => {
+    const numbers = { yearBookId: book.yearBookId, monthId: book.monthId };
+    if (target instanceof WriteBatch) target.update(bookRef(userId, book.id), numbers);
+    else target.update(bookRef(userId, book.id), numbers);
+  });
+}
+
+function checkShiftedSize(shifted: ShiftedReading[]) {
+  if (shifted.length > MAX_SHIFTED_PER_WRITE) {
+    throw new Error('A mudança renumeraria leituras demais de uma vez. Nada foi salvo.');
+  }
+}
+
 /**
- * Saves or updates a single book in Firestore at users/{userId}/books/{bookId}.
+ * Saves an edited reading and renumbers the readings it shifted, all or nothing. The document is
+ * written whole (fields removed in the form really disappear), except the fichamento, which the form
+ * never edits: the one in the cloud is kept, so quotes added on another device are not lost.
  */
-export async function saveUserBook(userId: string, book: Book): Promise<void> {
+export async function saveReading(userId: string, book: Book, shifted: ShiftedReading[] = []): Promise<Book> {
   const path = `${getUserBooksPath(userId)}/${book.id}`;
   try {
-    const docRef = doc(db, 'users', userId, 'books', String(book.id));
-    const data = prepareBookForWrite(book);
-    await setDoc(docRef, data, { merge: true });
+    checkShiftedSize(shifted);
+    const ref = bookRef(userId, book.id);
+    return await runTransaction(db, async (transaction) => {
+      const current = await transaction.get(ref);
+      const { fichamento: _local, ...rest } = book;
+      const remoteFichamento = current.exists() ? (current.data() as Book).fichamento : undefined;
+      const saved: Book = remoteFichamento ? { ...rest, fichamento: remoteFichamento } : rest;
+      transaction.set(ref, prepareBookForWrite(saved));
+      updateNumbers(transaction, userId, shifted);
+      return saved;
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
 
-/**
- * Deletes a book from Firestore at users/{userId}/books/{bookId}.
- */
-export async function deleteUserBook(userId: string, bookId: number): Promise<void> {
+/** Deletes a reading and renumbers the readings after it, all or nothing. */
+export async function deleteReading(userId: string, bookId: number, shifted: ShiftedReading[] = []): Promise<void> {
   const path = `${getUserBooksPath(userId)}/${bookId}`;
   try {
-    const docRef = doc(db, 'users', userId, 'books', String(bookId));
-    await deleteDoc(docRef);
+    checkShiftedSize(shifted);
+    const batch = writeBatch(db);
+    batch.delete(bookRef(userId, bookId));
+    updateNumbers(batch, userId, shifted);
+    await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 
 /**
- * Updates only the reading numbers of existing books, for readings shifted when another one is
- * inserted, moved or removed. Two small fields per book, so one batch covers a whole year.
+ * Publishes a fichamento. `base` is the version the editor started from: if the cloud changed since
+ * (another device), both sides are merged quote by quote instead of one overwriting the other.
  */
-export async function updateReadingNumbers(
+export async function saveFichamento(
   userId: string,
-  books: Pick<Book, 'id' | 'yearBookId' | 'monthId'>[]
-): Promise<void> {
+  bookId: number,
+  base: FichamentoData | undefined,
+  next: FichamentoData
+): Promise<{ fichamento: FichamentoData; merged: boolean }> {
+  const path = `${getUserBooksPath(userId)}/${bookId}`;
   try {
-    for (let index = 0; index < books.length; index += 400) {
-      const batch = writeBatch(db);
-      books.slice(index, index + 400).forEach((book) => {
-        batch.update(doc(db, 'users', userId, 'books', String(book.id)), {
-          yearBookId: book.yearBookId,
-          monthId: book.monthId,
-        });
-      });
-      await batch.commit();
-    }
+    const ref = bookRef(userId, bookId);
+    return await runTransaction(db, async (transaction) => {
+      const current = await transaction.get(ref);
+      if (!current.exists()) throw new Error('O livro não foi encontrado na nuvem. Nada foi salvo.');
+      const book = current.data() as Book;
+      const result = mergeFichamento(base, next, book.fichamento);
+      // Validates the size of the whole document before writing the single field.
+      prepareBookForWrite({ ...book, fichamento: result.fichamento });
+      transaction.update(ref, { fichamento: withoutUndefined(result.fichamento) });
+      return result;
+    });
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, getUserBooksPath(userId));
+    handleFirestoreError(error, OperationType.UPDATE, path);
   }
 }
+
+// Ids of recent creations, so a retried request returns the book it already made instead of a copy.
+const KEPT_REQUEST_IDS = 50;
 
 export async function createUserBook(
   userId: string,
   buildBook: (id: number) => Book,
-  requestId: string
+  requestId: string,
+  shifted: ShiftedReading[] = []
 ): Promise<Book> {
   const booksCol = collection(db, 'users', userId, 'books');
   const counterRef = doc(db, 'users', userId, 'metadata', 'bookIdCounter');
   let currentMaximum = 0;
 
   try {
+    checkShiftedSize(shifted);
     const counter = await getDoc(counterRef);
     if (!counter.exists()) {
-      const existingBooks = await getDocs(booksCol);
+      const existingBooks = await getDocsFromServer(booksCol);
       existingBooks.forEach((bookDoc) => {
         currentMaximum = Math.max(currentMaximum, Number(bookDoc.data().id) || 0);
       });
@@ -262,18 +321,19 @@ export async function createUserBook(
       const requestIds = (counterData?.requestIds || {}) as Record<string, number>;
       const previousId = requestIds[requestId];
       if (previousId) {
-        const previousRef = doc(db, 'users', userId, 'books', String(previousId));
-        const previousBook = await transaction.get(previousRef);
+        const previousBook = await transaction.get(bookRef(userId, previousId));
         if (previousBook.exists()) return previousBook.data() as Book;
       }
 
       const lastId = counter.exists() ? Number(counterData?.lastId) || 0 : currentMaximum;
       const book = buildBook(lastId + 1);
-      transaction.set(counterRef, {
-        lastId: book.id,
-        requestIds: { ...requestIds, [requestId]: book.id },
-      }, { merge: true });
-      transaction.set(doc(db, 'users', userId, 'books', String(book.id)), prepareBookForWrite(book));
+      const recent = Object.entries({ ...requestIds, [requestId]: book.id })
+        .sort(([, left], [, right]) => right - left)
+        .slice(0, KEPT_REQUEST_IDS);
+      // Written whole (not merged) so the list of request ids stays short.
+      transaction.set(counterRef, { lastId: book.id, requestIds: Object.fromEntries(recent) });
+      transaction.set(bookRef(userId, book.id), prepareBookForWrite(book));
+      updateNumbers(transaction, userId, shifted);
       return book;
     });
   } catch (error) {
@@ -281,19 +341,31 @@ export async function createUserBook(
   }
 }
 
-export async function replaceUserBooks(userId: string, books: Book[]): Promise<void> {
-  // Validate the entire import before the first write. Eight bounded documents stay below 10 MiB per request.
-  const sanitized = books.map(prepareBookForWrite);
+/** Ids of the books a restore has to write: new ones and the ones whose content differs. */
+export function booksToWrite(existing: Map<string, Record<string, unknown>>, prepared: Record<string, any>[]): Record<string, any>[] {
+  return prepared.filter((data) => {
+    const current = existing.get(String(data.id));
+    return !current || stableSerialize(current) !== stableSerialize(data);
+  });
+}
+
+/**
+ * Makes the cloud equal to the given books: writes only what differs and deletes what is not in them.
+ * Every book is validated before the first write.
+ */
+export async function replaceUserBooks(userId: string, books: Book[]): Promise<{ written: number; deleted: number }> {
+  const prepared = books.map(prepareBookForWrite);
   const booksCol = collection(db, 'users', userId, 'books');
-  const existingBooks = await getDocs(booksCol);
+  const existingBooks = await getDocsFromServer(booksCol);
+  const existing = new Map(existingBooks.docs.map((bookDoc) => [bookDoc.id, bookDoc.data()]));
   const nextIds = new Set(books.map((book) => String(book.id)));
   const maxId = books.reduce((maximum, book) => Math.max(maximum, book.id), 0);
+  const changed = booksToWrite(existing, prepared);
 
-  for (let index = 0; index < books.length; index += 8) {
+  // Eight bounded documents stay below the 10 MiB limit of one request.
+  for (let index = 0; index < changed.length; index += 8) {
     const batch = writeBatch(db);
-    books.slice(index, index + 8).forEach((book, offset) => {
-      batch.set(doc(db, 'users', userId, 'books', String(book.id)), sanitized[index + offset]);
-    });
+    changed.slice(index, index + 8).forEach((data) => batch.set(bookRef(userId, data.id), data));
     await batch.commit();
   }
 
@@ -310,6 +382,7 @@ export async function replaceUserBooks(userId: string, books: Book[]): Promise<v
     const lastId = counter.exists() ? Number(counter.data().lastId) || 0 : 0;
     transaction.set(counterRef, { lastId: Math.max(lastId, maxId) }, { merge: true });
   });
+  return { written: changed.length, deleted: staleDocs.length };
 }
 
 export interface MigrationProgress {
@@ -345,7 +418,8 @@ export async function migrateBooksToFirestore(
   const existingIds = new Set<string>();
   try {
     const booksCol = collection(db, 'users', userId, 'books');
-    const existingSnap = await getDocs(booksCol);
+    // From the server: an offline cache could make every book look missing.
+    const existingSnap = await getDocsFromServer(booksCol);
     existingSnap.forEach((d) => existingIds.add(d.id));
   } catch (err: any) {
     const friendly = formatFirestoreErrorMessage(err);
@@ -418,7 +492,7 @@ export async function migrateBooksToFirestore(
 /**
  * Calculates live Firestore statistics directly from database for the user.
  */
-export async function getFirestoreStats(userId: string, expectedBooks?: Book[]): Promise<{
+export async function getFirestoreStats(userId: string, expectedBooks: Book[]): Promise<{
   total: number;
   readTotal: number;
   readingTotal: number;
@@ -435,19 +509,11 @@ export async function getFirestoreStats(userId: string, expectedBooks?: Book[]):
   });
 
   const actualBooksById = new Map(books.map((book) => [book.id, book]));
-  const isValidTarget = expectedBooks
-    ? books.length === expectedBooks.length && expectedBooks.every((expectedBook) => {
-      const actualBook = actualBooksById.get(expectedBook.id);
-      return !!actualBook && stableSerialize(sanitizeBookForFirestore(actualBook)) ===
-        stableSerialize(sanitizeBookForFirestore(expectedBook));
-    })
-    : books.length === 551 &&
-      readBooks.length === 549 &&
-      readingTotal === 2 &&
-      byYear[2023] === 69 &&
-      byYear[2024] === 183 &&
-      byYear[2025] === 207 &&
-      byYear[2026] === 90;
+  const isValidTarget = books.length === expectedBooks.length && expectedBooks.every((expectedBook) => {
+    const actualBook = actualBooksById.get(expectedBook.id);
+    return !!actualBook && stableSerialize(sanitizeBookForFirestore(actualBook)) ===
+      stableSerialize(sanitizeBookForFirestore(expectedBook));
+  });
 
   return {
     total: books.length,
