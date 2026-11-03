@@ -21,20 +21,59 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { MONTHS_LIST } from './utils/helpers';
 import { currentYear, isRead, nextMonthPosition, planNewReading, renumberYears } from './utils/readingOrder';
 import {
-  areBookCollectionsEquivalent,
   createUserBook,
-  deleteUserBook,
+  deleteReading,
   fetchUserBooks,
   formatFirestoreErrorMessage,
   replaceUserBooks,
-  saveUserBook,
+  saveFichamento,
+  saveReading,
   subscribeUserBooks,
-  updateReadingNumbers,
 } from './lib/firestoreBooks';
 import { exportToGoogleDrive } from './lib/driveSync';
 
 const LOCAL_STORAGE_CACHE_KEY = 'controle_leituras_cache_v5';
-const LOCAL_STORAGE_MIGRATION_SOURCE_KEY = 'controle_leituras_cache_v5_migration_source';
+// Set when the browser had no room for the fichamentos and the cache holds the books without them.
+const LOCAL_STORAGE_CACHE_SLIM_KEY = 'controle_leituras_cache_v5_sem_fichamentos';
+// Older versions kept a second local copy here; it is never newer than the cloud.
+const LEGACY_MIGRATION_SOURCE_KEY = 'controle_leituras_cache_v5_migration_source';
+
+/** Last books seen from the cloud on this device: shown at once while the cloud answers. */
+function readCachedBooks(): Book[] | null {
+  try {
+    localStorage.removeItem(LEGACY_MIGRATION_SOURCE_KEY);
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_STORAGE_CACHE_KEY) || 'null');
+    if (Array.isArray(parsed) && parsed.length > 0) return mergeBooksWithCanonical(parsed);
+  } catch (e) {
+    console.warn('Erro ao carregar cache local:', e);
+  }
+  return null;
+}
+
+function writeCachedBooks(books: Book[]): void {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_CACHE_KEY, JSON.stringify(books));
+    localStorage.removeItem(LOCAL_STORAGE_CACHE_SLIM_KEY);
+    return;
+  } catch {
+    // Browser storage is small (about 5 MB): keep at least the books, without fichamentos and cover copies.
+  }
+  try {
+    const slim = books.map(({ fichamento: _fichamento, coverFallback: _coverFallback, ...rest }) => rest);
+    localStorage.setItem(LOCAL_STORAGE_CACHE_KEY, JSON.stringify(slim));
+    localStorage.setItem(LOCAL_STORAGE_CACHE_SLIM_KEY, '1');
+  } catch (e) {
+    console.warn('Erro ao gravar cache local:', e);
+  }
+}
+
+function cacheHasNoFichamentos(): boolean {
+  try {
+    return localStorage.getItem(LOCAL_STORAGE_CACHE_SLIM_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -51,23 +90,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('journal');
 
   // Books state with local cache as instant fallback
-  const [books, setBooks] = useState<Book[]>(() => {
-    try {
-      const cached = localStorage.getItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY)
-        || localStorage.getItem(LOCAL_STORAGE_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return mergeBooksWithCanonical(parsed);
-        }
-      }
-    } catch (e) {
-      console.warn('Erro ao carregar cache local:', e);
-    }
-    return INITIAL_BOOKS;
-  });
+  const [books, setBooks] = useState<Book[]>(() => readCachedBooks() ?? INITIAL_BOOKS);
+  // Offered for migration only if the server confirms that the cloud is empty.
   const migrationSourceBooks = useRef(books);
-  const initialSnapshotHandled = useRef(false);
+  const serverConfirmed = useRef(false);
+  const cachedWithoutFichamentos = useRef(cacheHasNoFichamentos());
+  // The fichamento as the editor opened it (or last published it), to merge edits made elsewhere.
+  const fichamentoBase = useRef<{ bookId: number; fichamento?: FichamentoData } | null>(null);
+  const [fichamentoNotice, setFichamentoNotice] = useState('');
   const [syncPhase, setSyncPhase] = useState<'connecting' | 'ready' | 'migration-required' | 'offline'>('connecting');
   const [syncAttempt, setSyncAttempt] = useState(0);
   const [isMigrationModalOpen, setIsMigrationModalOpen] = useState(false);
@@ -100,47 +130,34 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || currentUser.email?.toLowerCase() !== ALLOWED_EMAIL.toLowerCase()) return;
 
-    initialSnapshotHandled.current = false;
+    serverConfirmed.current = false;
     setSyncPhase('connecting');
     const unsubscribe = subscribeUserBooks(
       currentUser.uid,
-      (cloudBooks) => {
-        if (!initialSnapshotHandled.current) {
-          initialSnapshotHandled.current = true;
+      (cloudBooks, { fromCache, changed }) => {
+        if (!serverConfirmed.current) {
+          // Until the server answers, a cached list (empty when offline) says nothing about the cloud:
+          // the local copy stays on screen and no change is accepted.
+          if (fromCache) {
+            setSyncPhase('offline');
+            return;
+          }
+          serverConfirmed.current = true;
           if (cloudBooks.length === 0) {
-            try {
-              localStorage.setItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY, JSON.stringify(migrationSourceBooks.current));
-            } catch (error) {
-              console.warn('Não foi possível preservar uma cópia local para migração:', error);
-            }
             setSyncPhase('migration-required');
             setIsMigrationModalOpen(true);
             return;
           }
-
-          const hasLocalDifferences = !areBookCollectionsEquivalent(
-            migrationSourceBooks.current,
-            cloudBooks
-          );
-
-          if (hasLocalDifferences) {
-            try {
-              localStorage.setItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY, JSON.stringify(migrationSourceBooks.current));
-            } catch (error) {
-              console.warn('Não foi possível preservar uma cópia local para migração:', error);
-            }
-          }
+          // The cloud is the record: whatever this device had cached is replaced by it.
           setBooks(cloudBooks);
           setSyncPhase('ready');
-          if (hasLocalDifferences) setIsMigrationModalOpen(true);
           return;
         }
-
-        setBooks(cloudBooks);
-        setSyncPhase('ready');
+        if (changed) setBooks(cloudBooks);
+        setSyncPhase((phase) => (phase === 'migration-required' ? phase : 'ready'));
       },
       (error) => {
-        initialSnapshotHandled.current = true;
+        serverConfirmed.current = false;
         setSyncPhase('offline');
         setSaveState('error');
         setSaveMessage(formatFirestoreErrorMessage(error));
@@ -152,11 +169,7 @@ export default function App() {
 
   // Keep local cache in sync whenever books state changes
   useEffect(() => {
-    try {
-      localStorage.setItem(LOCAL_STORAGE_CACHE_KEY, JSON.stringify(books));
-    } catch (e) {
-      console.warn('Erro ao gravar cache local:', e);
-    }
+    writeCachedBooks(books);
   }, [books]);
 
   useEffect(() => {
@@ -264,16 +277,6 @@ export default function App() {
     }
   };
 
-  const persistBook = (book: Book, label = 'Livro'): Promise<string | null> =>
-    runWrite(
-      label,
-      () => saveUserBook(currentUser!.uid, book),
-      () => setBooks((prev) => (prev.some((item) => item.id === book.id)
-        ? prev.map((item) => item.id === book.id ? book : item)
-        : [...prev, book])),
-      () => persistBook(book, label)
-    );
-
   // Readings shifted by an insertion, move or removal only change their two number fields.
   const applyReadingNumbers = (prev: Book[], changes: Book[]): Book[] => {
     const byId = new Map(changes.map((book) => [book.id, book]));
@@ -293,12 +296,10 @@ export default function App() {
     const shifted = renumbered.filter((item) => item.id !== book.id);
     return runWrite(
       label,
-      async () => {
-        await saveUserBook(currentUser!.uid, saved);
-        if (shifted.length) await updateReadingNumbers(currentUser!.uid, shifted);
-      },
-      () => setBooks((prev) => applyReadingNumbers(
-        prev.some((item) => item.id === saved.id) ? prev.map((item) => (item.id === saved.id ? saved : item)) : [...prev, saved],
+      // One transaction: the book and the numbers it shifted are saved together or not at all.
+      () => saveReading(currentUser!.uid, saved, shifted),
+      (stored) => setBooks((prev) => applyReadingNumbers(
+        prev.some((item) => item.id === stored.id) ? prev.map((item) => (item.id === stored.id ? stored : item)) : [...prev, stored],
         shifted
       )),
       () => persistReading(book, label, years)
@@ -323,11 +324,7 @@ export default function App() {
     });
     return runWrite(
       label,
-      async () => {
-        const created = await createUserBook(currentUser!.uid, buildBook, requestId);
-        if (shifted.length) await updateReadingNumbers(currentUser!.uid, shifted);
-        return created;
-      },
+      () => createUserBook(currentUser!.uid, buildBook, requestId, shifted),
       (created) => setBooks((prev) => applyReadingNumbers([...prev.filter((item) => item.id !== created.id), created], shifted)),
       () => persistNewReading(draft, label, requestId)
     );
@@ -361,10 +358,7 @@ export default function App() {
       : [];
     return runWrite(
       'Exclusão do livro',
-      async () => {
-        await deleteUserBook(currentUser!.uid, id);
-        if (shifted.length) await updateReadingNumbers(currentUser!.uid, shifted);
-      },
+      () => deleteReading(currentUser!.uid, id, shifted),
       () => setBooks((prev) => applyReadingNumbers(prev.filter((book) => book.id !== id), shifted)),
       () => persistDeleteBook(id)
     );
@@ -377,10 +371,47 @@ export default function App() {
     }
   };
 
-  const handleSaveFichamento = (bookId: number, fichamento: FichamentoData): Promise<string | null> => {
-    const book = books.find((item) => item.id === bookId);
-    if (!book) return Promise.resolve('O livro não foi encontrado no acervo atual.');
-    return persistBook({ ...book, fichamento }, 'Fichamento');
+  const openFichamento = (book: Book) => {
+    // Offline with a cache that had no room for fichamentos, the editor would open empty.
+    if (syncPhase !== 'ready' && cachedWithoutFichamentos.current) {
+      setSaveState('error');
+      setSaveMessage('O fichamento abre quando a conexão com a nuvem voltar.');
+      return;
+    }
+    fichamentoBase.current = { bookId: book.id, fichamento: book.fichamento };
+    setFichamentoNotice('');
+    setSelectedFichamentoBook(book);
+  };
+
+  /** Saves a fichamento edited from `base`; a retry keeps the same base, whatever is open by then. */
+  const publishFichamento = (
+    bookId: number,
+    fichamento: FichamentoData,
+    base: FichamentoData | undefined,
+    onSaved?: (saved: FichamentoData) => void
+  ): Promise<string | null> =>
+    runWrite(
+      'Fichamento',
+      () => saveFichamento(currentUser!.uid, bookId, base, fichamento),
+      (result) => {
+        if (fichamentoBase.current?.bookId === bookId) fichamentoBase.current = { bookId, fichamento: result.fichamento };
+        setBooks((prev) => prev.map((item) => (item.id === bookId ? { ...item, fichamento: result.fichamento } : item)));
+        if (result.merged) setFichamentoNotice('Este fichamento também foi alterado em outro aparelho; as duas versões foram reunidas.');
+        onSaved?.(result.fichamento);
+      },
+      () => publishFichamento(bookId, fichamento, base)
+    );
+
+  const handleSaveFichamento = async (
+    bookId: number,
+    fichamento: FichamentoData
+  ): Promise<{ error?: string; saved?: FichamentoData }> => {
+    if (!books.some((item) => item.id === bookId)) return { error: 'O livro não foi encontrado no acervo atual.' };
+    const base = fichamentoBase.current?.bookId === bookId ? fichamentoBase.current.fichamento : undefined;
+    let saved: FichamentoData | undefined;
+    const error = await publishFichamento(bookId, fichamento, base, (value) => { saved = value; });
+    // The editor shows what was stored, which includes quotes kept from another device.
+    return error ? { error } : { saved };
   };
 
   // In-Progress Reading Handlers
@@ -542,7 +573,7 @@ export default function App() {
             onEditBook={handleOpenEditModal}
             onDeleteBook={handleDeleteBook}
             onOpenCover={(b) => setSelectedCoverBook(b)}
-            onOpenFichamento={(b) => setSelectedFichamentoBook(b)}
+            onOpenFichamento={openFichamento}
           />
         )}
 
@@ -554,7 +585,7 @@ export default function App() {
             onDeleteReading={handleDeleteBook}
             onCompleteReading={handleCompleteReading}
             onOpenCover={(b) => setSelectedCoverBook(b)}
-            onOpenFichamento={(b) => setSelectedFichamentoBook(b)}
+            onOpenFichamento={openFichamento}
           />
         )}
 
@@ -571,7 +602,7 @@ export default function App() {
             onEditBook={handleOpenEditModal}
             onDeleteBook={handleDeleteBook}
             onOpenCover={(b) => setSelectedCoverBook(b)}
-            onOpenFichamento={(b) => setSelectedFichamentoBook(b)}
+            onOpenFichamento={openFichamento}
           />
         )}
 
@@ -582,7 +613,7 @@ export default function App() {
             onDeleteBook={handleDeleteBook}
             onAddBook={handleOpenAddModal}
             onOpenCover={(b) => setSelectedCoverBook(b)}
-            onOpenFichamento={(b) => setSelectedFichamentoBook(b)}
+            onOpenFichamento={openFichamento}
           />
         )}
 
@@ -617,7 +648,7 @@ export default function App() {
         onClose={() => setSelectedCoverBook(null)}
         onOpenFichamento={(b) => {
           setSelectedCoverBook(null);
-          setSelectedFichamentoBook(b);
+          openFichamento(b);
         }}
         onEditBook={handleOpenEditModal}
       />
@@ -628,6 +659,7 @@ export default function App() {
         isOpen={!!selectedFichamentoBook}
         onClose={() => setSelectedFichamentoBook(null)}
         onSave={handleSaveFichamento}
+        notice={fichamentoNotice}
       />
 
       {/* Backup & Restauração Manual Modal */}
@@ -642,10 +674,7 @@ export default function App() {
         isOpen={isMigrationModalOpen}
         onClose={() => {
           setIsMigrationModalOpen(false);
-          if (syncPhase === 'ready') {
-            migrationSourceBooks.current = books;
-            localStorage.removeItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY);
-          }
+          if (syncPhase === 'ready') migrationSourceBooks.current = books;
         }}
         userId={currentUser.uid}
         userEmail={currentUser.email || ''}
@@ -656,7 +685,6 @@ export default function App() {
             const syncedBooks = await fetchUserBooks(currentUser.uid);
             setBooks(syncedBooks);
             migrationSourceBooks.current = syncedBooks;
-            localStorage.removeItem(LOCAL_STORAGE_MIGRATION_SOURCE_KEY);
             setSyncPhase('ready');
           } catch (error) {
             setSyncPhase('offline');

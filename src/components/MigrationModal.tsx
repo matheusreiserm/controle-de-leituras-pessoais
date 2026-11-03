@@ -70,8 +70,14 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
       readingTotal,
       byYear,
       hasUniqueIds: uniqueIds.size === books.length,
+      maxId: books.reduce((maximum, book) => Math.max(maximum, book.id), 0),
     };
   }, [books]);
+
+  // Every reading year on either side, so a new year never goes missing from the comparison.
+  const years = Array.from(
+    new Set([...Object.keys(localStats.byYear), ...Object.keys(firestoreStats?.byYear || {})].map(Number))
+  ).sort((a, b) => a - b);
 
   const loadLiveStats = async () => {
     if (!userId) return;
@@ -243,40 +249,18 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-5 gap-2 text-center text-xs">
-              <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
-                <span className="text-[10px] text-stone-400 uppercase font-mono block">2023</span>
-                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2023] || 0}</span>
-                <span className="text-[10px] text-emerald-400 block font-mono">
-                  {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2023] || 0}` : '...'}
-                </span>
-              </div>
+            <div className="flex flex-wrap gap-2 text-center text-xs">
+              {years.map((year) => (
+                <div key={year} className="flex-1 min-w-[4.5rem] p-2.5 rounded-lg bg-stone-900 border border-stone-800">
+                  <span className="text-[10px] text-stone-400 uppercase font-mono block">{year || 'Sem ano'}</span>
+                  <span className="font-bold text-stone-200 text-sm">{localStats.byYear[year] || 0}</span>
+                  <span className="text-[10px] text-emerald-400 block font-mono">
+                    {firestoreStats ? `Nuvem: ${firestoreStats.byYear[year] || 0}` : '...'}
+                  </span>
+                </div>
+              ))}
 
-              <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
-                <span className="text-[10px] text-stone-400 uppercase font-mono block">2024</span>
-                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2024] || 0}</span>
-                <span className="text-[10px] text-emerald-400 block font-mono">
-                  {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2024] || 0}` : '...'}
-                </span>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
-                <span className="text-[10px] text-stone-400 uppercase font-mono block">2025</span>
-                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2025] || 0}</span>
-                <span className="text-[10px] text-emerald-400 block font-mono">
-                  {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2025] || 0}` : '...'}
-                </span>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-stone-900 border border-stone-800">
-                <span className="text-[10px] text-stone-400 uppercase font-mono block">2026</span>
-                <span className="font-bold text-stone-200 text-sm">{localStats.byYear[2026] || 0}</span>
-                <span className="text-[10px] text-emerald-400 block font-mono">
-                  {firestoreStats ? `Nuvem: ${firestoreStats.byYear[2026] || 0}` : '...'}
-                </span>
-              </div>
-
-              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+              <div className="flex-1 min-w-[4.5rem] p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
                 <span className="text-[10px] text-amber-300 uppercase font-mono font-bold block">
                   Total
                 </span>
@@ -393,7 +377,7 @@ export const MigrationModal: React.FC<MigrationModalProps> = ({
         <div className="p-4 border-t border-stone-800/80 bg-stone-950/70 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-stone-400">
             <Server size={14} className="text-amber-400" />
-            <span>Documentos: users/{userId}/books/[1..551]</span>
+            <span>Documentos: users/{userId}/books/[1..{localStats.maxId}]</span>
           </div>
 
           <div className="flex items-center gap-2">

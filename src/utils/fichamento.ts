@@ -1,4 +1,4 @@
-import type { FichamentoItem, FichamentoSection } from '../types';
+import type { FichamentoData, FichamentoItem, FichamentoSection } from '../types';
 
 /**
  * published: igual ao que está salvo · edited: salvo, mas alterado nesta edição
@@ -235,4 +235,66 @@ export function groupBySection(items: FichamentoItem[], sections: FichamentoSect
 
 export function sectionHeading(section: FichamentoSection): string {
   return section.author ? `${section.title} — ${section.author}` : section.title;
+}
+
+// ---- Publishing from more than one device ----
+
+/** Key-order independent comparison (documents come back from the cloud with their keys sorted). */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stable((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+const sameItem = (left: FichamentoItem, right: FichamentoItem) =>
+  left.page === right.page && left.text === right.text && (left.sectionId ?? '') === (right.sectionId ?? '');
+
+/**
+ * What to save when publishing `local`, edited from `base`, while the cloud now holds `remote`.
+ * If nobody else changed it, `local` is saved as is. Otherwise both sides are kept, quote by quote:
+ * what was added or edited on either side stays, what was deleted on one side and left untouched on
+ * the other goes away, and an edit wins over a deletion so that no text is lost.
+ */
+export function mergeFichamento(
+  base: FichamentoData | undefined,
+  local: FichamentoData,
+  remote: FichamentoData | undefined
+): { fichamento: FichamentoData; merged: boolean } {
+  if (stable(remote) === stable(base)) return { fichamento: local, merged: false };
+
+  const baseItems = new Map((base?.items || []).map((item) => [item.id, item]));
+  const remoteItems = new Map((remote?.items || []).map((item) => [item.id, item]));
+  const localIds = new Set(local.items.map((item) => item.id));
+  const items: FichamentoItem[] = [];
+  for (const item of local.items) {
+    const before = baseItems.get(item.id);
+    const there = remoteItems.get(item.id);
+    if (!before) items.push(item);
+    else if (!sameItem(item, before)) items.push(item);
+    else if (there) items.push(there);
+  }
+  for (const [id, before] of baseItems) {
+    const there = remoteItems.get(id);
+    if (!localIds.has(id) && there && !sameItem(there, before)) items.push(there);
+  }
+  for (const there of remote?.items || []) {
+    if (!baseItems.has(there.id) && !localIds.has(there.id)) items.push(there);
+  }
+
+  const reference = (local.reference ?? '') !== (base?.reference ?? '') ? local.reference : remote?.reference ?? local.reference;
+  const sections = stable(local.sections ?? []) !== stable(base?.sections ?? []) ? local.sections : remote?.sections;
+  return {
+    fichamento: {
+      ...(reference !== undefined ? { reference } : {}),
+      items,
+      ...(sections?.length ? { sections } : {}),
+    },
+    merged: true,
+  };
 }

@@ -164,7 +164,6 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
             id: typeof fi.id === 'string' ? fi.id : String(Date.now() + Math.random()),
             page: typeof fi.page === 'string' ? fi.page : '',
             text: typeof fi.text === 'string' ? fi.text : '',
-            type: fi.type === 'citacao' || fi.type === 'resumo' || fi.type === 'referencia' ? fi.type : 'citacao',
             ...(typeof fi.sectionId === 'string' && fi.sectionId ? { sectionId: fi.sectionId } : {}),
           }))
         : [];
@@ -203,6 +202,7 @@ export function validateBackupPayload(raw: unknown): BackupValidationResult {
       coverUrl: typeof item.coverUrl === 'string' ? item.coverUrl.trim() : undefined,
       coverFallback: typeof item.coverFallback === 'string' && item.coverFallback.startsWith('data:image/') ? item.coverFallback : undefined,
       genre: typeof item.genre === 'string' && item.genre.trim() ? item.genre.trim() : undefined,
+      dataSource: typeof item.dataSource === 'string' && item.dataSource.trim() ? item.dataSource.trim() : undefined,
       notes: typeof item.notes === 'string' && item.notes.trim() ? item.notes.trim() : undefined,
       status,
       fichamento,

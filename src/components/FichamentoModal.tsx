@@ -23,7 +23,10 @@ interface FichamentoModalProps {
   book: Book | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (bookId: number, fichamento: FichamentoData) => Promise<string | null>;
+  /** Returns the error, or the fichamento as stored (it may include quotes added on another device). */
+  onSave: (bookId: number, fichamento: FichamentoData) => Promise<{ error?: string; saved?: FichamentoData }>;
+  /** Shown above the quotes, e.g. after merging edits made on another device. */
+  notice?: string;
 }
 
 function getDefaultReference(b: Book): string {
@@ -104,6 +107,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  notice,
 }) => {
   const [reference, setReference] = useState('');
   const [publishedReference, setPublishedReference] = useState('');
@@ -249,7 +253,7 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
     setIsSaving(true);
     setSaveError('');
     try {
-      const error = await onSave(book.id, {
+      const { error, saved } = await onSave(book.id, {
         reference: finalReference,
         items: finalItems,
         ...(finalSections.length ? { sections: finalSections } : {}),
@@ -258,12 +262,15 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
         setSaveError(error);
         return;
       }
-      setPublished(new Map(finalItems.map((item) => [item.id, item])));
-      setPublishedReference(finalReference);
-      setSections(finalSections);
-      setPublishedSections(JSON.stringify(finalSections));
-      setReference(finalReference);
-      setItems(finalItems);
+      const storedItems = saved ? loadPublishedItems(saved.items) : finalItems;
+      const storedSections = saved ? cleanSections(saved.sections || []) : finalSections;
+      const storedReference = saved?.reference ?? finalReference;
+      setPublished(new Map(storedItems.map((item) => [item.id, item])));
+      setPublishedReference(storedReference);
+      setSections(storedSections);
+      setPublishedSections(JSON.stringify(storedSections));
+      setReference(storedReference);
+      setItems(storedItems);
       setEditing(new Set());
       setRemoved(new Set());
       setFocusRequest(null);
@@ -462,6 +469,11 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
           {saveError && (
             <div role="alert" className="mb-6 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
               {saveError}
+            </div>
+          )}
+          {notice && !saveError && (
+            <div role="status" className="mb-6 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-300 light:text-sky-800">
+              {notice}
             </div>
           )}
 

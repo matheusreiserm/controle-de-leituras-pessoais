@@ -148,3 +148,49 @@ test('a cover goes to the app folder in Drive, opened to anyone with the link', 
   const permission = created.find((call) => call.url.endsWith('/files/saved/permissions'));
   assert.deepEqual(JSON.parse(permission.body), { role: 'reader', type: 'anyone' });
 });
+
+test('besides the four newest backups, the newest of each month is kept for good', async () => {
+  const { backupsToRetire } = await import('../src/lib/driveSync');
+  const at = (id: string, modifiedTime: string) => ({ id, name: `controle_leituras_backup_${id}.json`, modifiedTime });
+  const verified = [
+    at('nov-03', '2026-11-03T10:00:00Z'), at('nov-02', '2026-11-02T10:00:00Z'), at('nov-01', '2026-11-01T10:00:00Z'),
+    at('oct-31', '2026-10-31T10:00:00Z'), at('oct-30', '2026-10-30T10:00:00Z'), at('oct-02', '2026-10-02T10:00:00Z'),
+    at('sep-20', '2026-09-20T10:00:00Z'), at('sep-10', '2026-09-10T10:00:00Z'), at('aug-05', '2026-08-05T10:00:00Z'),
+  ];
+  assert.deepEqual(backupsToRetire(verified).map((file) => file.id).sort(), ['oct-02', 'oct-30', 'sep-10']);
+});
+
+test('an export retires only what the retention allows', async () => {
+  const verified = (id: string, modifiedTime: string) => ({ id, name: `controle_leituras_backup_${modifiedTime.replace(/:/g, '-')}.json`, modifiedTime, appProperties: { verified: 'true', contentHash: id } });
+  files = [
+    verified('a', '2026-11-02T10:00:00Z'), verified('b', '2026-11-01T10:00:00Z'), verified('c', '2026-10-30T10:00:00Z'),
+    verified('d', '2026-10-20T10:00:00Z'), verified('e', '2026-09-15T10:00:00Z'),
+  ];
+  const result = await exportToGoogleDrive([book]);
+  assert.equal(result.success, true, result.message);
+  // The listing does not show the new file, so the four newest listed stay and so does September's.
+  assert.deepEqual(deleted, []);
+});
+
+test('writes to Firestore drop undefined at any depth and give up the cover copy before refusing a book', () => {
+  const clean = firestoreBooks.sanitizeBookForFirestore({ ...book, genre: undefined, fichamento: { reference: undefined, items: [{ id: 'q', page: '1', text: 't', sectionId: undefined }] } } as any);
+  assert.deepEqual(clean.fichamento, { items: [{ id: 'q', page: '1', text: 't' }] });
+  assert.equal('genre' in clean, false);
+  const heavy = { ...book, coverUrl: 'https://lh3.googleusercontent.com/d/x=w1000', coverFallback: 'data:image/webp;base64,' + 'A'.repeat(950000) };
+  const prepared = firestoreBooks.prepareBookForWrite(heavy);
+  assert.equal(prepared.coverFallback, undefined);
+  assert.equal(prepared.coverUrl, heavy.coverUrl);
+});
+
+test('a restore writes only the books that differ from the cloud', () => {
+  const existing = new Map<string, Record<string, unknown>>([
+    ['1', { id: 1, title: 'A', fichamento: { items: [], reference: 'R' } }],
+    ['2', { id: 2, title: 'B' }],
+  ]);
+  const prepared = [
+    { id: 1, title: 'A', fichamento: { reference: 'R', items: [] } }, // same content, other key order
+    { id: 2, title: 'B corrigido' },
+    { id: 3, title: 'C' },
+  ];
+  assert.deepEqual(firestoreBooks.booksToWrite(existing, prepared).map((data) => data.id), [2, 3]);
+});

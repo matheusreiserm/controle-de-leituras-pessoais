@@ -3,6 +3,7 @@ import { Book } from '../types';
 import { exportToGoogleDrive, importFromGoogleDrive } from '../lib/driveSync';
 import { restoreCatalogCovers } from '../utils/covers';
 import { validateBackupPayload, createBackupPayload } from '../utils/backupValidation';
+import { describeRestore, summarizeRestore } from '../utils/restoreSummary';
 import {
   Cloud,
   Upload,
@@ -36,9 +37,40 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 
   if (!isOpen) return null;
 
+  const downloadJson = (data: Book[], fileName: string) => {
+    const payload = createBackupPayload(data);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  /**
+   * Shows what the restore changes and, once confirmed, keeps a copy of the current library first:
+   * a new verified version in Drive (nothing is uploaded if the latest one is identical), or a JSON
+   * downloaded to this device when Drive is not available. Returns how the copy was kept, or null if
+   * the restore was cancelled.
+   */
+  const confirmAndKeepCopy = async (incoming: Book[]): Promise<string | null> => {
+    const summary = summarizeRestore(books, incoming);
+    const question = `${describeRestore(summary, books.length, incoming.length)}\n\n` +
+      'Antes de restaurar, uma cópia do acervo atual será guardada. Restaurar este backup?';
+    if (!window.confirm(question)) return null;
+    const drive = await exportToGoogleDrive(books, false);
+    if (drive.success) return 'Cópia do acervo anterior guardada no Drive.';
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    downloadJson(books, `acervo_antes_da_restauracao_${stamp}.json`);
+    return 'Cópia do acervo anterior baixada neste aparelho.';
+  };
+
   const handleExportDrive = async () => {
     const confirmed = window.confirm(
-      `Deseja salvar uma versão do backup de ${books.length} leituras no Google Drive? As quatro versões mais recentes serão mantidas.`
+      `Deseja salvar uma versão do backup de ${books.length} leituras no Google Drive? Ficam guardadas as quatro versões mais recentes e a última de cada mês.`
     );
     if (!confirmed) return;
 
@@ -69,11 +101,6 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   };
 
   const handleImportDrive = async () => {
-    const confirmed = window.confirm(
-      'Atenção: A restauração do Google Drive substituirá os dados atuais pelas leituras do backup. Deseja continuar?'
-    );
-    if (!confirmed) return;
-
     setLoadingAction('import');
     setFeedback(null);
     try {
@@ -90,11 +117,13 @@ export const BackupModal: React.FC<BackupModalProps> = ({
           return;
         }
 
+        const copy = await confirmAndKeepCopy(validation.books);
+        if (!copy) return;
         await onRestoreBooks(validation.books);
         setFeedback({
           type: 'success',
           text: `Backup restaurado com sucesso do Google Drive! (${validation.totalRecords} leituras validadas)`,
-          details: result.message,
+          details: `${result.message} ${copy}`,
         });
       } else {
         setFeedback({ type: 'error', text: result.message });
@@ -130,16 +159,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
 
   const handleExportLocalJson = () => {
     try {
-      const payload = createBackupPayload(books);
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `backup_leituras_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadJson(books, `backup_leituras_${new Date().toISOString().slice(0, 10)}.json`);
 
       setFeedback({
         type: 'success',
@@ -157,14 +177,6 @@ export const BackupModal: React.FC<BackupModalProps> = ({
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    const confirmed = window.confirm(
-      `Deseja restaurar o backup a partir do arquivo '${file.name}'? Todos os dados atuais serão substituídos pelo conteúdo validado deste arquivo.`
-    );
-    if (!confirmed) {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
 
     setLoadingAction('file-import');
     setFeedback(null);
@@ -186,11 +198,13 @@ export const BackupModal: React.FC<BackupModalProps> = ({
           return;
         }
 
+        const copy = await confirmAndKeepCopy(validation.books);
+        if (!copy) return;
         await onRestoreBooks(validation.books);
         setFeedback({
           type: 'success',
-          text: `Backup local restaurado com sucesso! (${validation.totalRecords} leituras validadas)`,
-          details: `Versão do formato: ${validation.version}. Todos os tipos e campos obrigatórios foram aprovados.`,
+          text: `Backup "${file.name}" restaurado! (${validation.totalRecords} leituras validadas)`,
+          details: `Versão do formato: ${validation.version}. ${copy}`,
         });
       } catch (err: any) {
         setFeedback({
@@ -233,7 +247,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 DADOS NO GOOGLE DRIVE
               </h2>
               <p className="text-[11px] text-stone-400">
-                Snapshots rotativos no Drive · até 4 versões
+                Cópias no Drive · 4 mais recentes + 1 por mês
               </p>
             </div>
           </div>
@@ -257,7 +271,7 @@ export const BackupModal: React.FC<BackupModalProps> = ({
                 O Firestore é a fonte principal; o Drive mantém cópias de segurança versionadas e a restauração valida os dados antes de aplicá-los.
               </span>
               <span className="block mt-1 text-[11px] text-stone-500">
-                O backup semanal automático depende do app aberto e da autorização ativa do Drive.
+                O backup automático (diário, só quando algo mudou) depende do app aberto e da autorização ativa do Drive. Antes de qualquer restauração, o app mostra o que vai mudar e guarda uma cópia do acervo atual.
               </span>
             </div>
           </div>
