@@ -10,6 +10,7 @@ import {
   fichamentoFileName,
   formatFichamentoHtml,
   formatFichamentoMarkdown,
+  formatFichamentoClipboardHtml,
   formatFichamentoText,
   hasContent,
   itemStatus,
@@ -18,6 +19,9 @@ import {
   pageLabel,
   summarize,
 } from '../utils/fichamento';
+import { quoteToPlainText } from '../utils/quoteText';
+import { copyFromQuoteField, copyShownQuotes, pasteIntoQuote, quoteFieldShortcut } from '../utils/quoteClipboard';
+import { QuoteText } from './QuoteText';
 
 interface FichamentoModalProps {
   book: Book | null;
@@ -41,6 +45,10 @@ interface AutoGrowTextareaProps {
   className?: string;
   'aria-label'?: string;
   focusOnMount?: boolean;
+  onPaste?: React.ClipboardEventHandler<HTMLTextAreaElement>;
+  onCopy?: React.ClipboardEventHandler<HTMLTextAreaElement>;
+  onCut?: React.ClipboardEventHandler<HTMLTextAreaElement>;
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
 }
 
 /** Grows with its content, so a long quote is always shown in full while it is edited. */
@@ -295,7 +303,21 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
   const handleCopyFormatted = async () => {
     setExportOpen(false);
     try {
-      await navigator.clipboard.writeText(formatFichamentoText(book, reference, visibleItems, sections));
+      const plain = formatFichamentoText(book, reference, visibleItems, sections);
+      const html = formatFichamentoClipboardHtml(book, reference, visibleItems, sections);
+      // With the HTML version, italic and bold survive a paste into Word or Docs; nothing else does.
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({
+            'text/plain': new Blob([plain], { type: 'text/plain' }),
+            'text/html': new Blob([html], { type: 'text/html' }),
+          })]);
+        } catch {
+          await navigator.clipboard.writeText(plain);
+        }
+      } else {
+        await navigator.clipboard.writeText(plain);
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -344,6 +366,8 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
         >
           <div className="mb-1.5 flex items-center gap-2">
             <span className="font-mono text-[11px] text-stone-500">#{index + 1}</span>
+            {/* Invisible in the flex row; keeps "#1 p. 11" apart in copied text. */}
+            {' '}
             {item.page.trim() && (
               <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 font-mono text-xs font-semibold text-amber-300">
                 {pageLabel(item.page)}
@@ -355,12 +379,12 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
               <IconAction icon={Trash2} title="Apagar" danger onClick={() => removeItem(item.id)} />
             </div>
           </div>
-          {item.text.trim() && (
+          {quoteToPlainText(item.text).trim() && (
             <blockquote
               onDoubleClick={() => startEditing(item.id)}
               className="border-l-2 border-amber-500/40 pl-4 font-serif text-[15px] leading-relaxed text-stone-200 whitespace-pre-wrap break-words"
             >
-              {item.text}
+              <QuoteText text={item.text} />
             </blockquote>
           )}
         </li>
@@ -394,6 +418,10 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
               value={item.text}
               focusOnMount={focusField === 'text'}
               onChange={(e) => updateItem(item.id, 'text', e.target.value)}
+              onPaste={pasteIntoQuote}
+              onCopy={(e) => copyFromQuoteField(e, false)}
+              onCut={(e) => copyFromQuoteField(e, true)}
+              onKeyDown={quoteFieldShortcut}
               placeholder="Citação ou anotação"
               aria-label="Texto da citação ou anotação"
               className="w-full min-w-0 flex-1 rounded-md border border-stone-800 bg-stone-900 px-3 py-2 text-sm leading-relaxed text-stone-200 placeholder-stone-600 focus:border-amber-500/60 focus:outline-none"
@@ -573,10 +601,15 @@ export const FichamentoModal: React.FC<FichamentoModalProps> = ({
             </div>
 
             {/* Lista de Trechos e Citações (Página / Texto) */}
-            <section className="space-y-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-400/90">
-                Anotações e Citações ({visibleCount})
-              </h3>
+            <section className="space-y-3" onCopy={copyShownQuotes}>
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-400/90">
+                  Anotações e Citações ({visibleCount})
+                </h3>
+                <p className="text-[11px] text-stone-500">
+                  Ao colar, ficam só o itálico e o negrito (ou Ctrl+I e Ctrl+B). Escreva ___ onde a página vira: a linha aparece de leve e não vai no texto copiado.
+                </p>
+              </div>
 
               {groups.map((group, groupIndex) => (
                 <div key={group.section?.id ?? `loose-${groupIndex}`} className="space-y-3">

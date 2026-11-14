@@ -1,4 +1,5 @@
 import type { FichamentoData, FichamentoItem, FichamentoSection } from '../types';
+import { escapeHtml, quoteToHtml, quoteToMarkdown, quoteToPlainText } from './quoteText';
 
 /**
  * published: igual ao que está salvo · edited: salvo, mas alterado nesta edição
@@ -78,7 +79,7 @@ export function pageLabel(page: string): string {
 /** Quotes with text, grouped by the table of contents, numbered in reading order across groups. */
 function exportGroups(items: FichamentoItem[], sections?: FichamentoSection[]) {
   let number = 0;
-  return groupBySection(items.filter((item) => item.text.trim()), sections).map((group) => ({
+  return groupBySection(items.filter((item) => quoteToPlainText(item.text).trim()), sections).map((group) => ({
     section: group.section,
     items: group.items.map((item) => {
       number += 1;
@@ -99,9 +100,26 @@ export function formatFichamentoText(
   output += `----------------------------------------\n\n`;
   for (const group of exportGroups(items, sections)) {
     if (group.section) output += `== ${sectionHeading(group.section)} (p. ${group.section.startPage}) ==\n\n`;
-    for (const { item, raw } of group.items) output += `[${raw}]\n${item.text.trim()}\n\n`;
+    for (const { item, raw } of group.items) output += `[${raw}]\n${quoteToPlainText(item.text.trim()).trim()}\n\n`;
   }
   return output;
+}
+
+/** The same text as formatFichamentoText, as HTML for the clipboard: only italic, bold and line breaks. */
+export function formatFichamentoClipboardHtml(
+  book: { title: string; author: string },
+  reference: string,
+  items: FichamentoItem[],
+  sections?: FichamentoSection[],
+): string {
+  const lines = [escapeHtml(`FICHAMENTO: ${book.title.toUpperCase()}`), escapeHtml(`Autor: ${book.author}`)];
+  if (reference.trim()) lines.push(escapeHtml(`Referência: ${reference.trim()}`));
+  lines.push('----------------------------------------', '');
+  for (const group of exportGroups(items, sections)) {
+    if (group.section) lines.push(escapeHtml(`== ${sectionHeading(group.section)} (p. ${group.section.startPage}) ==`), '');
+    for (const { item, raw } of group.items) lines.push(escapeHtml(`[${raw}]`), quoteToHtml(item.text.trim()), '');
+  }
+  return lines.join('<br>');
 }
 
 export function formatFichamentoMarkdown(
@@ -117,14 +135,11 @@ export function formatFichamentoMarkdown(
     if (group.section) output += `## ${sectionHeading(group.section)}\n\n`;
     for (const { item, label } of group.items) {
       output += `${grouped ? '###' : '##'} ${label}\n\n`;
-      output += item.text.trim().split('\n').map((line) => `> ${line}`.trimEnd()).join('\n') + '\n\n';
+      output += quoteToMarkdown(item.text.trim()).trim().split('\n').map((line) => `> ${line}`.trimEnd()).join('\n') + '\n\n';
     }
   }
   return output;
 }
-
-const escapeHtml = (value: string) =>
-  value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 
 /** Standalone page laid out for printing or "Salvar como PDF". */
 export function formatFichamentoHtml(
@@ -137,7 +152,7 @@ export function formatFichamentoHtml(
     .map((group) => {
       const heading = group.section ? `<h2 class="text">${escapeHtml(sectionHeading(group.section))}</h2>` : '';
       const quotes = group.items
-        .map(({ item, label }) => `<section><h3>${escapeHtml(label)}</h3><blockquote>${escapeHtml(item.text.trim()).replace(/\n/g, '<br>')}</blockquote></section>`)
+        .map(({ item, label }) => `<section><h3>${escapeHtml(label)}</h3><blockquote>${quoteToHtml(item.text.trim())}</blockquote></section>`)
         .join('\n');
       return heading + quotes;
     })
