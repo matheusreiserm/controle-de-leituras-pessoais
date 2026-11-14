@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Book, MonthName } from '../types';
-import { MONTHS_LIST, compareDecades, getDecade } from '../utils/helpers';
+import { MONTHS_LIST, canonicalCountry, compareDecades, getDecade } from '../utils/helpers';
 import { compareReadingOrder, monthReadingNumbers, overallReadingNumbers } from '../utils/readingOrder';
 import { BookCard } from './BookCard';
 import { Calendar, BookOpen, UserCheck, Layers, Filter, Globe, Clock, User, Search, X, ArrowUpDown } from 'lucide-react';
@@ -48,8 +48,9 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
   const uniqueCountries = useMemo(() => {
     const counts: Record<string, number> = {};
     books.forEach((b) => {
-      if (b.nationality) {
-        counts[b.nationality] = (counts[b.nationality] || 0) + 1;
+      const country = canonicalCountry(b.nationality);
+      if (country) {
+        counts[country] = (counts[country] || 0) + 1;
       }
     });
     return Object.entries(counts)
@@ -90,7 +91,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
   // Filtered books list for "Todos" mode
   const filteredAllBooks = useMemo(() => {
     let result = books.filter((b) => {
-      if (selectedCountry !== 'Todos' && b.nationality !== selectedCountry) return false;
+      if (selectedCountry !== 'Todos' && canonicalCountry(b.nationality) !== selectedCountry) return false;
       if (selectedDecade !== 'Todas' && getDecade(b.year) !== selectedDecade) return false;
       if (selectedAuthor !== 'Todos' && b.author !== selectedAuthor) return false;
       if (searchQuery.trim()) {
@@ -154,7 +155,7 @@ export const MonthlyJournalView: React.FC<MonthlyJournalViewProps> = ({
   if (isAllYearsMode) {
     const totalPagesFiltered = filteredAllBooks.reduce((acc, b) => acc + (b.pages || 0), 0);
     const totalAuthorsFiltered = new Set(filteredAllBooks.map((b) => b.author)).size;
-    const totalCountriesFiltered = new Set(filteredAllBooks.map((b) => b.nationality)).size;
+    const totalCountriesFiltered = new Set(filteredAllBooks.map((b) => canonicalCountry(b.nationality))).size;
 
     return (
       <div className="space-y-6">

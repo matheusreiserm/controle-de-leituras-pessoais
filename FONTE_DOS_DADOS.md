@@ -11,9 +11,10 @@ O front-end não deve gerar, completar ou estimar dados bibliográficos.
 A base utilizada pelo aplicativo está em `src/data/initialBooks.ts`. O arquivo
 `controle_leituras_com_idiomas.json` é a cópia JSON auditável da mesma base.
 
-Após a carga inicial, novas leituras e alterações ficam no armazenamento local
-do navegador. O botão de nuvem importa ou exporta o acervo completo em JSON no
-Google Drive. O Firestore não é usado como fonte dos livros.
+Essa base foi a carga inicial: depois da migração, o acervo vive no Firestore,
+que é a fonte principal. Novas leituras e alterações vão direto para lá. O
+navegador guarda só uma cópia para abrir rápido, e o Google Drive guarda os
+backups em JSON (veja o README).
 
 Os geradores antigos em `scripts/` foram desativados porque continham regras de
 preenchimento estimado para notas e idiomas.

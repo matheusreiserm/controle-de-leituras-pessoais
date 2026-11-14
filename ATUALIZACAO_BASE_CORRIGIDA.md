@@ -1,5 +1,7 @@
 # Atualização da base corrigida
 
+> Registro histórico (agosto de 2026). O app não é mais publicado pelo AI Studio e usa o banco `(default)` do Firestore; o procedimento atual de publicação está no README.
+
 Esta versão contém 551 registros e 551 capas locais.
 
 ## Composição da base

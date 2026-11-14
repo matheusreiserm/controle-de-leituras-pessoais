@@ -53,7 +53,8 @@ export const BookModal: React.FC<BookModalProps> = ({
       setMonth(initialData.month || getCurrentMonthName());
       setNationality(initialData.nationality);
       setFormat(initialData.format);
-      setLanguage(initialData.language === ('Francês' as any) ? 'Inglês' : initialData.language);
+      // Languages outside the list (old records) become "Outros", never another language.
+      setLanguage(['Português', 'Inglês', 'Espanhol', 'Outros', 'Não informado'].includes(initialData.language) ? initialData.language : 'Outros');
       setRating(initialData.rating);
       setCoverUrl(initialData.coverUrl || '');
       setCoverFallback(initialData.coverFallback);

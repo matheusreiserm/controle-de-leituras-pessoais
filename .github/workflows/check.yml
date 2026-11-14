@@ -2,8 +2,9 @@ name: Verify app
 
 on:
   pull_request:
+  # Work branches are checked on every push; main is checked by the deploy itself.
   push:
-    branches: ['codex/capas-backup-confiavel']
+    branches-ignore: [main]
 
 permissions:
   contents: read

@@ -2,6 +2,7 @@ import { resolveCoverUrl } from '../utils/covers';
 import React, { useState } from 'react';
 import { Book } from '../types';
 import { currentYear, isRead } from '../utils/readingOrder';
+import { canonicalCountry } from '../utils/helpers';
 import { Sparkles, Trophy, Flame, Globe2, Award, Star } from 'lucide-react';
 
 interface WrappedViewProps {
@@ -41,7 +42,7 @@ export const WrappedView: React.FC<WrappedViewProps> = ({ books, availableYears 
   const topBooks = yearBooks.filter((b) => b.rating >= 5).slice(0, 6);
 
   // Geography
-  const countries = Array.from(new Set(yearBooks.map((b) => b.nationality).filter(Boolean)));
+  const countries = Array.from(new Set(yearBooks.map((b) => canonicalCountry(b.nationality)).filter(Boolean)));
   const continents = Array.from(new Set(yearBooks.map((b) => b.continent).filter(Boolean)));
 
   return (

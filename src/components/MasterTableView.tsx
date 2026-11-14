@@ -165,7 +165,7 @@ export const MasterTableView: React.FC<MasterTableViewProps> = ({
             <option value="Português">Português</option>
             <option value="Inglês">Inglês</option>
             <option value="Espanhol">Espanhol</option>
-            <option value="Francês">Francês</option>
+            <option value="Outros">Outros</option>
             <option value="Não informado">Não informado</option>
           </select>
 

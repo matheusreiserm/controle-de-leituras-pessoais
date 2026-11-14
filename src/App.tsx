@@ -16,6 +16,7 @@ import { FichamentoModal } from './components/FichamentoModal';
 import { BackupModal } from './components/BackupModal';
 import { MigrationModal } from './components/MigrationModal';
 import { LoginView } from './components/LoginView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { auth, logout, ALLOWED_EMAIL } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { MONTHS_LIST } from './utils/helpers';
@@ -105,6 +106,8 @@ export default function App() {
   const [saveMessage, setSaveMessage] = useState('');
   const [retryWrite, setRetryWrite] = useState<(() => void) | null>(null);
   const automaticBackupInProgress = useRef(false);
+  // Identifies the latest write, so only its own "still saving" notice is shown.
+  const writeToken = useRef(0);
 
   // Auth State Listener
   useEffect(() => {
@@ -262,6 +265,13 @@ export default function App() {
     setSaveState('saving');
     setSaveMessage(`${label}: salvando na nuvem...`);
     setRetryWrite(null);
+    const token = ++writeToken.current;
+    // Without a network a write can wait for a long time; say so instead of "salvando..." forever.
+    const slowNotice = window.setTimeout(() => {
+      if (writeToken.current === token) {
+        setSaveMessage(`${label}: a nuvem está demorando a responder. Verifique a conexão e mantenha o app aberto enquanto isso.`);
+      }
+    }, 15000);
     try {
       const result = await operation();
       onSuccess(result);
@@ -274,6 +284,8 @@ export default function App() {
       setSaveMessage(`${label}: ${message}`);
       if (retry) setRetryWrite(() => () => { void retry(); });
       return message;
+    } finally {
+      window.clearTimeout(slowNotice);
     }
   };
 
@@ -564,6 +576,7 @@ export default function App() {
 
       {/* Main View Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <ErrorBoundary resetKey={activeTab}>
         {activeTab === 'journal' && (
           <MonthlyJournalView
             books={readBooks}
@@ -630,6 +643,7 @@ export default function App() {
             onOpenCover={(b) => setSelectedCoverBook(b)}
           />
         )}
+        </ErrorBoundary>
       </main>
 
       {/* Add / Edit Modal */}

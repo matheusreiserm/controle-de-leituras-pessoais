@@ -89,6 +89,73 @@ export const COUNTRY_FLAG_MAP: Record<string, { flag: string; code: string; cont
   'Moçambique': { flag: '🇲🇿', code: 'mz', continent: 'África' },
 };
 
+/** Emoji of a flag from its code: "lb" → 🇱🇧; "gb-wls" → the subdivision flag. */
+function flagEmoji(code: string): string {
+  if (code.includes('-')) {
+    return '\u{1F3F4}' + [...code.replace('-', '')].map((char) => String.fromCodePoint(0xe0000 + char.charCodeAt(0))).join('') + '\u{E007F}';
+  }
+  return String.fromCodePoint(...[...code.toUpperCase()].map((char) => 0x1f1e6 + char.charCodeAt(0) - 65));
+}
+
+// Countries beyond the first list: without them a book shows a globe and lands in "Europa" in the matrix.
+const MORE_COUNTRIES: [string, string, ContinentType][] = [
+  // Europa
+  ['Albânia', 'al', 'Europa'], ['Romênia', 'ro', 'Europa'], ['Bulgária', 'bg', 'Europa'], ['Sérvia', 'rs', 'Europa'],
+  ['Croácia', 'hr', 'Europa'], ['Eslovênia', 'si', 'Europa'], ['Eslováquia', 'sk', 'Europa'], ['Bósnia e Herzegovina', 'ba', 'Europa'],
+  ['Montenegro', 'me', 'Europa'], ['Macedônia do Norte', 'mk', 'Europa'], ['Lituânia', 'lt', 'Europa'], ['Letônia', 'lv', 'Europa'],
+  ['Estônia', 'ee', 'Europa'], ['Bielorrússia', 'by', 'Europa'], ['Moldávia', 'md', 'Europa'], ['Islândia', 'is', 'Europa'],
+  ['Luxemburgo', 'lu', 'Europa'], ['Malta', 'mt', 'Europa'], ['Chipre', 'cy', 'Europa'], ['País de Gales', 'gb-wls', 'Europa'],
+  ['Irlanda do Norte', 'gb-nir', 'Europa'],
+  // Ásia
+  ['Líbano', 'lb', 'Ásia'], ['Iraque', 'iq', 'Ásia'], ['Afeganistão', 'af', 'Ásia'], ['Síria', 'sy', 'Ásia'], ['Palestina', 'ps', 'Ásia'],
+  ['Jordânia', 'jo', 'Ásia'], ['Arábia Saudita', 'sa', 'Ásia'], ['Iêmen', 'ye', 'Ásia'], ['Emirados Árabes Unidos', 'ae', 'Ásia'],
+  ['Kuwait', 'kw', 'Ásia'], ['Catar', 'qa', 'Ásia'], ['Omã', 'om', 'Ásia'], ['Armênia', 'am', 'Ásia'], ['Azerbaijão', 'az', 'Ásia'],
+  ['Geórgia', 'ge', 'Ásia'], ['Cazaquistão', 'kz', 'Ásia'], ['Uzbequistão', 'uz', 'Ásia'], ['Paquistão', 'pk', 'Ásia'],
+  ['Bangladesh', 'bd', 'Ásia'], ['Sri Lanka', 'lk', 'Ásia'], ['Nepal', 'np', 'Ásia'], ['Vietnã', 'vn', 'Ásia'], ['Tailândia', 'th', 'Ásia'],
+  ['Camboja', 'kh', 'Ásia'], ['Mianmar', 'mm', 'Ásia'], ['Indonésia', 'id', 'Ásia'], ['Filipinas', 'ph', 'Ásia'], ['Malásia', 'my', 'Ásia'],
+  ['Singapura', 'sg', 'Ásia'], ['Taiwan', 'tw', 'Ásia'], ['Hong Kong', 'hk', 'Ásia'], ['Mongólia', 'mn', 'Ásia'], ['Coreia do Norte', 'kp', 'Ásia'],
+  // África
+  ['Zimbábue', 'zw', 'África'], ['Gana', 'gh', 'África'], ['Botsuana', 'bw', 'África'], ['Argélia', 'dz', 'África'], ['Tunísia', 'tn', 'África'],
+  ['Líbia', 'ly', 'África'], ['Sudão', 'sd', 'África'], ['Etiópia', 'et', 'África'], ['Eritreia', 'er', 'África'], ['Somália', 'so', 'África'],
+  ['Tanzânia', 'tz', 'África'], ['Uganda', 'ug', 'África'], ['Ruanda', 'rw', 'África'], ['Congo', 'cg', 'África'],
+  ['República Democrática do Congo', 'cd', 'África'], ['Camarões', 'cm', 'África'], ['Senegal', 'sn', 'África'], ['Mali', 'ml', 'África'],
+  ['Costa do Marfim', 'ci', 'África'], ['Guiné', 'gn', 'África'], ['Guiné-Bissau', 'gw', 'África'], ['Cabo Verde', 'cv', 'África'],
+  ['São Tomé e Príncipe', 'st', 'África'], ['Guiné Equatorial', 'gq', 'África'], ['Zâmbia', 'zm', 'África'], ['Malawi', 'mw', 'África'],
+  ['Namíbia', 'na', 'África'], ['Madagascar', 'mg', 'África'], ['Maurício', 'mu', 'África'], ['Benin', 'bj', 'África'], ['Togo', 'tg', 'África'],
+  ['Burkina Faso', 'bf', 'África'], ['Níger', 'ne', 'África'], ['Chade', 'td', 'África'], ['Serra Leoa', 'sl', 'África'],
+  ['Libéria', 'lr', 'África'], ['Gâmbia', 'gm', 'África'], ['Mauritânia', 'mr', 'África'], ['Gabão', 'ga', 'África'], ['Lesoto', 'ls', 'África'],
+  ['Essuatíni', 'sz', 'África'],
+  // Américas
+  ['El Salvador', 'sv', 'América do Norte'], ['Honduras', 'hn', 'América do Norte'], ['Nicarágua', 'ni', 'América do Norte'],
+  ['Panamá', 'pa', 'América do Norte'], ['Belize', 'bz', 'América do Norte'], ['Haiti', 'ht', 'América do Norte'],
+  ['República Dominicana', 'do', 'América do Norte'], ['Jamaica', 'jm', 'América do Norte'], ['Trinidad e Tobago', 'tt', 'América do Norte'],
+  ['Barbados', 'bb', 'América do Norte'], ['Bahamas', 'bs', 'América do Norte'], ['Martinica', 'mq', 'América do Norte'],
+  ['Guadalupe', 'gp', 'América do Norte'], ['Santa Lúcia', 'lc', 'América do Norte'], ['Guiana', 'gy', 'América do Sul'],
+  ['Suriname', 'sr', 'América do Sul'],
+  // Oceania
+  ['Papua-Nova Guiné', 'pg', 'Oceania'], ['Fiji', 'fj', 'Oceania'], ['Samoa', 'ws', 'Oceania'], ['Tonga', 'to', 'Oceania'],
+];
+for (const [name, code, continent] of MORE_COUNTRIES) {
+  COUNTRY_FLAG_MAP[name] ??= { flag: flagEmoji(code), code, continent };
+}
+
+// Accent-free spelling → name in the list; the first spelling listed wins ("Suíça" over "Suiça").
+const COUNTRY_BY_NORMALIZED = new Map<string, string>();
+for (const name of Object.keys(COUNTRY_FLAG_MAP)) {
+  const key = normalizeString(name);
+  if (!COUNTRY_BY_NORMALIZED.has(key)) COUNTRY_BY_NORMALIZED.set(key, name);
+}
+
+/**
+ * One name per country, so spellings with and without accents count once ("Russia" and "Rússia",
+ * "Suiça" and "Suíça"). Different names stay different ("Inglaterra", "Escócia"); unknown ones stay as typed.
+ */
+export function canonicalCountry(countryName: string): string {
+  const clean = (countryName || '').trim();
+  if (!clean) return clean;
+  return COUNTRY_BY_NORMALIZED.get(normalizeString(clean)) ?? clean;
+}
+
 // Remove accents & lowercase for fuzzy match
 export function normalizeString(str: string): string {
   return str
@@ -173,7 +240,7 @@ export function calculateCountryStats(books: Book[]): CountryStat[] {
   const map: Record<string, { volume: number; authors: Set<string>; books: Book[] }> = {};
 
   books.forEach(book => {
-    const country = book.nationality.trim() || 'Desconhecido';
+    const country = canonicalCountry(book.nationality) || 'Desconhecido';
     if (!map[country]) {
       map[country] = { volume: 0, authors: new Set(), books: [] };
     }
@@ -182,10 +249,17 @@ export function calculateCountryStats(books: Book[]): CountryStat[] {
     map[country].books.push(book);
   });
 
+  // A country outside the list takes the continent recorded on its books, not a default.
+  const recordedContinent = (list: Book[]): ContinentType => {
+    const counts = new Map<ContinentType, number>();
+    list.forEach((book) => { if (book.continent) counts.set(book.continent, (counts.get(book.continent) || 0) + 1); });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'Europa';
+  };
+
   return Object.entries(map).map(([country, data]) => ({
     country,
     flag: getCountryFlag(country),
-    continent: getCountryContinent(country),
+    continent: COUNTRY_FLAG_MAP[country]?.continent ?? recordedContinent(data.books),
     volume: data.volume,
     uniqueAuthors: data.authors.size,
     authorsList: Array.from(data.authors),
@@ -197,7 +271,7 @@ export function calculateDashboardStats(books: Book[]): DashboardStats {
   const totalBooks = books.length;
   const totalPages = books.reduce((acc, b) => acc + (b.pages || 0), 0);
   const authorsSet = new Set(books.map(b => b.author.trim()));
-  const countriesSet = new Set(books.map(b => b.nationality.trim()).filter(Boolean));
+  const countriesSet = new Set(books.map(b => canonicalCountry(b.nationality)).filter(Boolean));
 
   const averagePages = totalBooks > 0 ? Math.round(totalPages / totalBooks) : 0;
   const averageRating = totalBooks > 0
