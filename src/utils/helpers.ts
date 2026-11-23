@@ -436,3 +436,13 @@ export function getContinentColors(continent: string): ContinentColors {
     solidBg: 'bg-stone-600',
   };
 }
+
+/** Reading languages offered in forms and filters. */
+export const LANGUAGE_OPTIONS: LanguageType[] = ['Português', 'Inglês', 'Espanhol', 'Francês'];
+
+/** The offered languages, plus any older value already in use so it is never shown as something else. */
+export function languageOptions(...inUse: (string | undefined)[]): string[] {
+  const options: string[] = [...LANGUAGE_OPTIONS];
+  for (const value of inUse) if (value && !options.includes(value)) options.push(value);
+  return options;
+}
