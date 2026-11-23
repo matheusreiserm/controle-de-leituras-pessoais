@@ -4,7 +4,7 @@ import { MONTHS_LIST } from './helpers';
 export const CURRENT_BACKUP_VERSION = '1.0.0';
 
 const VALID_FORMATS: FormatType[] = ['Físico', 'Kindle', 'PDF', 'Archive.org', 'Audible', 'Físico/Audible'];
-const VALID_LANGUAGES: LanguageType[] = ['Português', 'Inglês', 'Espanhol', 'Outros', 'Não informado'];
+const VALID_LANGUAGES: LanguageType[] = ['Português', 'Inglês', 'Espanhol', 'Francês', 'Outros', 'Não informado'];
 
 export interface BackupValidationResult {
   isValid: boolean;

@@ -14,7 +14,8 @@ export type MonthName =
 
 export type FormatType = 'Físico' | 'Kindle' | 'PDF' | 'Audible' | 'Archive.org' | 'Físico/Audible';
 
-export type LanguageType = 'Português' | 'Inglês' | 'Espanhol' | 'Outros' | 'Não informado';
+// 'Outros' and 'Não informado' are no longer offered, but books saved with them keep their value.
+export type LanguageType = 'Português' | 'Inglês' | 'Espanhol' | 'Francês' | 'Outros' | 'Não informado';
 
 export type ContinentType = 'América do Sul' | 'América do Norte' | 'Europa' | 'Ásia' | 'Oceania' | 'África';
 

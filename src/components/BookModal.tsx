@@ -1,7 +1,7 @@
 import { CoverInput } from './CoverInput';
 import React, { useState, useEffect } from 'react';
 import { Book, FormatType, LanguageType, MonthName } from '../types';
-import { MONTHS_LIST, getCountryContinent, COUNTRY_NAMES_LIST } from '../utils/helpers';
+import { MONTHS_LIST, getCountryContinent, COUNTRY_NAMES_LIST, languageOptions } from '../utils/helpers';
 import { StarRating } from './StarRating';
 import { CountryFlag } from './CountryFlag';
 import { X, Save, BookOpen } from 'lucide-react';
@@ -54,7 +54,7 @@ export const BookModal: React.FC<BookModalProps> = ({
       setNationality(initialData.nationality);
       setFormat(initialData.format);
       // Languages outside the list (old records) become "Outros", never another language.
-      setLanguage(['Português', 'Inglês', 'Espanhol', 'Outros', 'Não informado'].includes(initialData.language) ? initialData.language : 'Outros');
+      setLanguage(['Português', 'Inglês', 'Espanhol', 'Francês', 'Outros', 'Não informado'].includes(initialData.language) ? initialData.language : 'Outros');
       setRating(initialData.rating);
       setCoverUrl(initialData.coverUrl || '');
       setCoverFallback(initialData.coverFallback);
@@ -308,11 +308,7 @@ export const BookModal: React.FC<BookModalProps> = ({
                 onChange={(e) => setLanguage(e.target.value as LanguageType)}
                 className="w-full px-3 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-xl text-xs sm:text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:border-amber-500"
               >
-                <option value="Português">Português</option>
-                <option value="Inglês">Inglês</option>
-                <option value="Espanhol">Espanhol</option>
-                <option value="Outros">Outros</option>
-                <option value="Não informado">Não informado</option>
+                {languageOptions(language).map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
             </div>
           </div>

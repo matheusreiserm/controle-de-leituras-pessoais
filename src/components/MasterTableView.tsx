@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Book, FormatType, MonthName, LanguageType } from '../types';
-import { MONTHS_LIST } from '../utils/helpers';
+import { MONTHS_LIST, languageOptions } from '../utils/helpers';
 import { compareReadingOrder } from '../utils/readingOrder';
 import { StarRating } from './StarRating';
 import { CountryFlag } from './CountryFlag';
@@ -162,11 +162,7 @@ export const MasterTableView: React.FC<MasterTableViewProps> = ({
             className="px-2.5 py-1.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-stone-700 dark:text-stone-300 focus:outline-none focus:border-amber-500"
           >
             <option value="Todos">Idioma: Todos</option>
-            <option value="Português">Português</option>
-            <option value="Inglês">Inglês</option>
-            <option value="Espanhol">Espanhol</option>
-            <option value="Outros">Outros</option>
-            <option value="Não informado">Não informado</option>
+            {languageOptions(...books.map((book) => book.language)).map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
 
           {/* Clear Filters Button */}

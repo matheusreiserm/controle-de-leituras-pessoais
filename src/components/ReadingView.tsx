@@ -2,7 +2,7 @@ import { CoverInput } from './CoverInput';
 import { CoverImage } from './CoverImage';
 import React, { useState } from 'react';
 import { Book, FormatType, LanguageType, MonthName } from '../types';
-import { MONTHS_LIST, getCountryContinent, getCoverGradient, getContinentColors } from '../utils/helpers';
+import { MONTHS_LIST, getCountryContinent, getCoverGradient, getContinentColors, languageOptions } from '../utils/helpers';
 import { StarRating } from './StarRating';
 import { CountryFlag } from './CountryFlag';
 import {
@@ -463,11 +463,7 @@ export const ReadingView: React.FC<ReadingViewProps> = ({
                     onChange={(e) => setLanguage(e.target.value as LanguageType)}
                     className="w-full px-2 py-2 bg-stone-950 border border-stone-800 rounded-xl text-xs text-stone-100 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="Português">Português</option>
-                    <option value="Inglês">Inglês</option>
-                    <option value="Espanhol">Espanhol</option>
-                    <option value="Outros">Outros</option>
-                    <option value="Não informado">Não informado</option>
+                    {languageOptions(language).map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 </div>
               </div>
